@@ -8,7 +8,8 @@
 
   /* ── CONFIG ────────────────────────────────────────────────────── */
   var LANGUAGES = [
-    { code: 'en', label: '🇬🇧 English' },
+    { code: 'en', label: '🇬🇧 English (UK)' },
+    { code: 'en-US', label: '🇺🇸 English (US)' },
     { code: 'af', label: '🇿🇦 Afrikaans' },
     { code: 'ar', label: '🇸🇦 Arabic', rtl: true },
     { code: 'zh', label: '🇨🇳 Chinese (Simplified)' },
@@ -57,7 +58,7 @@
   ];
 
   var DEEPL_LANG_MAP = {
-    ar: 'AR', bg: 'BG', cs: 'CS', da: 'DA', de: 'DE', el: 'EL', en: 'EN-GB',
+    ar: 'AR', bg: 'BG', cs: 'CS', da: 'DA', de: 'DE', el: 'EL', en: 'EN-GB', 'en-US': 'EN-US',
     es: 'ES', et: 'ET', fi: 'FI', fr: 'FR', hu: 'HU', id: 'ID', it: 'IT',
     ja: 'JA', ko: 'KO', lt: 'LT', lv: 'LV', nl: 'NL', no: 'NB', pl: 'PL',
     pt: 'PT-BR', ro: 'RO', ru: 'RU', sk: 'SK', sl: 'SL', sv: 'SV', th: 'TH',
@@ -133,12 +134,12 @@
     var cfg = getConfig();
     if (cfg.provider !== 'deepl') return LANGUAGES;
     return LANGUAGES.filter(function (l) {
-      return l.code === 'en' || mapToDeepLCode(l.code);
+      return l.code === 'en' || l.code === 'en-US' || mapToDeepLCode(l.code);
     });
   }
 
   function isOriginalLanguage(code) {
-    return !code || code === 'en';
+    return !code || code === 'en' || code === 'en-US';
   }
 
   function init() {
