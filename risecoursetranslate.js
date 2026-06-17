@@ -80,10 +80,11 @@
 
   /* ── BAR STYLES ────────────────────────────────────────────────── */
   var css = [
+    /* bar layout */
     '#' + BAR_ID + '{',
     '  display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 10px;',
     '  width:100%;box-sizing:border-box;margin-top:14px;padding:0;',
-    '  font-family:sans-serif;font-size:13px;color:inherit;',
+    '  font-family:system-ui,sans-serif;font-size:13px;color:inherit;',
     '}',
     '#' + BAR_ID + '.rise-translate-bar--floating{',
     '  position:fixed;bottom:16px;right:16px;left:auto;top:auto;z-index:99999;',
@@ -91,16 +92,88 @@
     '  background:rgba(26,26,46,.92);color:#fff;border-radius:10px;',
     '  box-shadow:0 4px 16px rgba(0,0,0,.25);',
     '}',
-    '#' + BAR_ID + ' select{',
+
+    /* dropdown wrapper */
+    '.rise-dropdown{position:relative;display:inline-block;min-width:180px;max-width:260px;}',
+    '@media(max-width:420px){.rise-dropdown{min-width:140px;max-width:calc(100vw - 80px);}}',
+
+    /* trigger button */
+    '.rise-dropdown__trigger{',
+    '  display:flex;align-items:center;gap:6px;width:100%;',
     '  background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.15);',
-    '  color:#222;border-radius:6px;padding:6px 8px;font-size:13px;cursor:pointer;',
-    '  max-width:220px;',
+    '  color:#222;border-radius:6px;padding:6px 10px;font-size:13px;',
+    '  font-family:system-ui,sans-serif;cursor:pointer;text-align:left;',
+    '  transition:border-color .15s,box-shadow .15s;',
     '}',
-    '#' + BAR_ID + '.rise-translate-bar--floating select{',
+    '.rise-dropdown__trigger:hover{border-color:rgba(0,0,0,.3);box-shadow:0 0 0 2px rgba(0,0,0,.06);}',
+    '.rise-dropdown.is-open .rise-dropdown__trigger{border-color:#4a90d9;box-shadow:0 0 0 2px rgba(74,144,217,.25);}',
+    '.rise-dropdown__selected-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    '.rise-dropdown__chevron{flex-shrink:0;width:14px;height:14px;transition:transform .2s;}',
+    '.rise-dropdown.is-open .rise-dropdown__chevron{transform:rotate(180deg);}',
+
+    /* floating bar trigger (dark) */
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__trigger{',
     '  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;',
     '}',
-    '#' + BAR_ID + ' select option{background:#fff;color:#222;}',
-    '#' + BAR_ID + '.rise-translate-bar--floating select option{background:#1a1a2e;color:#fff;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__trigger:hover{',
+    '  border-color:rgba(255,255,255,.45);box-shadow:0 0 0 2px rgba(255,255,255,.1);',
+    '}',
+
+    /* panel */
+    '.rise-dropdown__panel{',
+    '  display:none;position:absolute;left:0;right:0;z-index:100000;',
+    '  background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;',
+    '  box-shadow:0 8px 24px rgba(0,0,0,.15);overflow:hidden;direction:ltr;',
+    '}',
+    '.rise-dropdown.is-open .rise-dropdown__panel{display:block;}',
+    '.rise-dropdown__panel--down{top:calc(100% + 4px);}',
+    '.rise-dropdown__panel--up{bottom:calc(100% + 4px);}',
+
+    /* floating bar panel (dark) */
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__panel{',
+    '  background:#1a1a2e;border-color:rgba(255,255,255,.15);',
+    '}',
+
+    /* search input */
+    '.rise-dropdown__search{',
+    '  display:block;width:100%;box-sizing:border-box;border:none;',
+    '  border-bottom:1px solid rgba(0,0,0,.08);padding:8px 10px;font-size:13px;',
+    '  font-family:system-ui,sans-serif;outline:none;background:transparent;color:#222;',
+    '}',
+    '.rise-dropdown__search::placeholder{color:rgba(0,0,0,.4);}',
+    '.rise-dropdown__search:focus{box-shadow:inset 0 -2px 0 #4a90d9;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__search{',
+    '  color:#fff;border-bottom-color:rgba(255,255,255,.12);',
+    '}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__search::placeholder{color:rgba(255,255,255,.4);}',
+
+    /* list */
+    '.rise-dropdown__list{',
+    '  list-style:none;margin:0;padding:4px 0;max-height:240px;overflow-y:auto;',
+    '}',
+    '.rise-dropdown__list::-webkit-scrollbar{width:6px;}',
+    '.rise-dropdown__list::-webkit-scrollbar-track{background:transparent;}',
+    '.rise-dropdown__list::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:3px;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);}',
+
+    /* list items */
+    '.rise-dropdown__item{',
+    '  padding:7px 10px;cursor:pointer;font-size:13px;',
+    '  transition:background .1s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+    '}',
+    '.rise-dropdown__item:hover,.rise-dropdown__item.is-focused{background:rgba(74,144,217,.1);color:#222;}',
+    '.rise-dropdown__item.is-selected{background:rgba(74,144,217,.18);font-weight:600;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__item{color:#ddd;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__item:hover,',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__item.is-focused{background:rgba(255,255,255,.1);color:#fff;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__item.is-selected{background:rgba(74,144,217,.3);color:#fff;}',
+
+    /* empty state */
+    '.rise-dropdown__empty{display:none;padding:12px 10px;font-size:12px;color:rgba(0,0,0,.45);text-align:center;}',
+    '.rise-dropdown__empty.is-visible{display:block;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rise-dropdown__empty{color:rgba(255,255,255,.4);}',
+
+    /* spinner & status (unchanged layout) */
     '#' + BAR_ID + ' .rise-status{font-size:11px;opacity:.55;min-height:0;}',
     '#' + BAR_ID + ' .rise-status:empty{display:none;}',
     '#' + BAR_ID + '.rise-translate-bar--floating .rise-status{margin-left:4px;}',
@@ -114,6 +187,183 @@
     '}',
     '@keyframes rise-spin{to{transform:rotate(360deg)}}'
   ].join('\n');
+
+  /* ── DROPDOWN HELPERS ─────────────────────────────────────────── */
+  var dropdownAPI = null;
+
+  function createChevronSVG() {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 20 20');
+    svg.setAttribute('fill', 'currentColor');
+    svg.classList.add('rise-dropdown__chevron');
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('fill-rule', 'evenodd');
+    path.setAttribute('d', 'M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z');
+    path.setAttribute('clip-rule', 'evenodd');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function setupDropdownBehavior(wrapper, trigger, panel, searchInput, list, emptyMsg, selectedText, onSelect) {
+    var focusIndex = -1;
+    var items = [];
+    var _outsideClickBound = false;
+
+    function getVisibleItems() {
+      return Array.prototype.slice.call(list.querySelectorAll('.rise-dropdown__item:not([hidden])'));
+    }
+
+    function open() {
+      wrapper.classList.add('is-open');
+      adjustPanelDirection();
+      searchInput.value = '';
+      filterItems('');
+      items = getVisibleItems();
+      focusIndex = -1;
+      setTimeout(function () { searchInput.focus(); }, 0);
+      if (!_outsideClickBound) {
+        _outsideClickBound = true;
+        document.addEventListener('click', outsideClick, true);
+      }
+    }
+
+    function close() {
+      wrapper.classList.remove('is-open');
+      clearFocus();
+      focusIndex = -1;
+    }
+
+    function toggle() {
+      if (wrapper.classList.contains('is-open')) close();
+      else open();
+    }
+
+    function outsideClick(e) {
+      if (!wrapper.contains(e.target)) close();
+    }
+
+    function adjustPanelDirection() {
+      panel.classList.remove('rise-dropdown__panel--up', 'rise-dropdown__panel--down');
+      var rect = wrapper.getBoundingClientRect();
+      var spaceBelow = window.innerHeight - rect.bottom;
+      var spaceAbove = rect.top;
+      panel.classList.add(spaceBelow < 280 && spaceAbove > spaceBelow ? 'rise-dropdown__panel--up' : 'rise-dropdown__panel--down');
+    }
+
+    function filterItems(query) {
+      var q = query.toLowerCase().replace(/[\u{1F1E0}-\u{1F9FF}]/gu, '').trim();
+      var anyVisible = false;
+      var allItems = list.querySelectorAll('.rise-dropdown__item');
+      for (var i = 0; i < allItems.length; i++) {
+        var text = (allItems[i].textContent || '').toLowerCase().replace(/[\u{1F1E0}-\u{1F9FF}]/gu, '').trim();
+        var match = !q || text.indexOf(q) !== -1;
+        allItems[i].hidden = !match;
+        if (match) anyVisible = true;
+      }
+      if (anyVisible) emptyMsg.classList.remove('is-visible');
+      else emptyMsg.classList.add('is-visible');
+      items = getVisibleItems();
+      focusIndex = -1;
+      clearFocus();
+    }
+
+    function clearFocus() {
+      var focused = list.querySelector('.is-focused');
+      if (focused) focused.classList.remove('is-focused');
+    }
+
+    function setFocus(idx) {
+      clearFocus();
+      if (idx >= 0 && idx < items.length) {
+        items[idx].classList.add('is-focused');
+        items[idx].scrollIntoView({ block: 'nearest' });
+      }
+    }
+
+    function selectItem(item) {
+      var code = item.getAttribute('data-value');
+      var label = item.textContent;
+      /* update selected class */
+      var prev = list.querySelector('.is-selected');
+      if (prev) prev.classList.remove('is-selected');
+      item.classList.add('is-selected');
+      selectedText.textContent = label;
+      close();
+      if (onSelect) onSelect(code);
+    }
+
+    /* event: trigger button */
+    trigger.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggle();
+    });
+
+    /* event: search input */
+    searchInput.addEventListener('input', function () {
+      filterItems(this.value);
+    });
+    searchInput.addEventListener('click', function (e) { e.stopPropagation(); });
+
+    /* event: keyboard */
+    searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items = getVisibleItems();
+        focusIndex = Math.min(focusIndex + 1, items.length - 1);
+        setFocus(focusIndex);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items = getVisibleItems();
+        focusIndex = Math.max(focusIndex - 1, 0);
+        setFocus(focusIndex);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (focusIndex >= 0 && focusIndex < items.length) {
+          selectItem(items[focusIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+        trigger.focus();
+      }
+    });
+
+    /* event: trigger keyboard open */
+    trigger.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        open();
+      }
+    });
+
+    /* event: item clicks */
+    list.addEventListener('click', function (e) {
+      var item = e.target.closest('.rise-dropdown__item');
+      if (item) selectItem(item);
+    });
+
+    /* public API */
+    return {
+      getValue: function () {
+        var sel = list.querySelector('.is-selected');
+        return sel ? sel.getAttribute('data-value') : 'en';
+      },
+      setValue: function (code) {
+        var allItems = list.querySelectorAll('.rise-dropdown__item');
+        for (var i = 0; i < allItems.length; i++) {
+          if (allItems[i].getAttribute('data-value') === code) {
+            var prev = list.querySelector('.is-selected');
+            if (prev) prev.classList.remove('is-selected');
+            allItems[i].classList.add('is-selected');
+            selectedText.textContent = allItems[i].textContent;
+            return;
+          }
+        }
+      },
+      close: close
+    };
+  }
 
   /* ── INIT ──────────────────────────────────────────────────────── */
   function getConfig() {
@@ -148,9 +398,8 @@
       placeBar();
       var saved = getSavedLang();
       if (saved && !isOriginalLanguage(saved)) {
-        var sel = document.getElementById('rise-select');
-        if (sel) {
-          sel.value = saved;
+        if (dropdownAPI) {
+          dropdownAPI.setValue(saved);
           translatePage(saved);
         }
       }
@@ -212,14 +461,60 @@
     bar = document.createElement('div');
     bar.id = BAR_ID;
 
-    var sel = document.createElement('select');
-    sel.id = 'rise-select';
-    sel.setAttribute('aria-label', 'Select course language');
+    /* dropdown wrapper */
+    var wrapper = document.createElement('div');
+    wrapper.className = 'rise-dropdown';
+
+    /* trigger button */
+    var trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'rise-dropdown__trigger';
+    trigger.id = 'rise-select';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-label', 'Select course language');
+
+    var selectedText = document.createElement('span');
+    selectedText.className = 'rise-dropdown__selected-text';
+    var savedCode = getSavedLang() || 'en';
+    var savedLang = LANGUAGES.find(function (l) { return l.code === savedCode; });
+    selectedText.textContent = savedLang ? savedLang.label : LANGUAGES[0].label;
+
+    trigger.appendChild(selectedText);
+    trigger.appendChild(createChevronSVG());
+
+    /* panel */
+    var panel = document.createElement('div');
+    panel.className = 'rise-dropdown__panel rise-dropdown__panel--down';
+
+    var searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'rise-dropdown__search';
+    searchInput.placeholder = 'Search languages\u2026';
+    searchInput.setAttribute('autocomplete', 'off');
+
+    var list = document.createElement('ul');
+    list.className = 'rise-dropdown__list';
+    list.setAttribute('role', 'listbox');
 
     getLanguages().forEach(function (l) {
-      sel.appendChild(new Option(l.label, l.code));
+      var li = document.createElement('li');
+      li.className = 'rise-dropdown__item';
+      li.setAttribute('role', 'option');
+      li.setAttribute('data-value', l.code);
+      li.textContent = l.label;
+      if (l.code === savedCode) li.classList.add('is-selected');
+      list.appendChild(li);
     });
-    sel.value = getSavedLang() || 'en';
+
+    var emptyMsg = document.createElement('div');
+    emptyMsg.className = 'rise-dropdown__empty';
+    emptyMsg.textContent = 'No languages found';
+
+    panel.appendChild(searchInput);
+    panel.appendChild(list);
+    panel.appendChild(emptyMsg);
+    wrapper.appendChild(trigger);
+    wrapper.appendChild(panel);
 
     var spinner = document.createElement('div');
     spinner.className = 'rise-spinner';
@@ -229,8 +524,8 @@
     status.className = 'rise-status';
     status.textContent = '';
 
-    sel.addEventListener('change', function () {
-      var lang = this.value;
+    /* wire up dropdown behavior */
+    dropdownAPI = setupDropdownBehavior(wrapper, trigger, panel, searchInput, list, emptyMsg, selectedText, function (lang) {
       if (isOriginalLanguage(lang)) {
         activeTranslation = null;
         restorePage();
@@ -243,7 +538,7 @@
       translatePage(lang, spinner, status);
     });
 
-    bar.appendChild(sel);
+    bar.appendChild(wrapper);
     bar.appendChild(spinner);
     bar.appendChild(status);
     return bar;
@@ -252,6 +547,7 @@
   function placeBar() {
     var startBtn = findStartButton();
     var bar = ensureBar();
+    if (dropdownAPI) dropdownAPI.close();
     if (startBtn) {
       bar.classList.remove('rise-translate-bar--floating');
       if (startBtn.nextElementSibling !== bar) {
@@ -265,7 +561,7 @@
 
   /* ── TEXT NODE COLLECTION ──────────────────────────────────────── */
   function getTextNodes() {
-    var skip  = ['SCRIPT','STYLE','NOSCRIPT','IFRAME','OPTION','SELECT',BAR_ID.toUpperCase()];
+    var skip  = ['SCRIPT','STYLE','NOSCRIPT','IFRAME',BAR_ID.toUpperCase()];
     var nodes = [];
     var walk  = document.createTreeWalker(
       document.body,
