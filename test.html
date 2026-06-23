@@ -101,7 +101,7 @@
   <script>
     document.getElementById('start-btn').addEventListener('click', function (e) {
       e.preventDefault();
-      document.getElementById('cover-page').style.display = 'none';
+      document.getElementById('cover-page').remove();
       document.getElementById('lesson-content').classList.add('is-active');
     });
   </script>

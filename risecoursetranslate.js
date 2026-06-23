@@ -2,7 +2,7 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in: add <script src="risecoursetranslate.js" defer></script> to index.html
  * Uses Google Translate (free endpoint). No API key required.
- * v1.4 — fixed dropdown collapse, removed document click listener
+ * v1.6.3 — fix dropdown closing while searching (ignore bar mutations, only close on reposition)
  */
 (function () {
   'use strict';
@@ -57,82 +57,124 @@
 
   var STORAGE_KEY       = 'rise_course_lang';
   var BAR_ID            = 'rise-translate-bar';
+  var START_SELECTORS   = [
+    'a.cover__header-content-action-link',
+    '.cover__header-content-action-link',
+    'button.cover__header-content-action-link',
+    '[class*="cover"][class*="action-link"]'
+  ];
   var cache             = {};
   var originalMap       = new Map();
   var isObserving       = false;
   var observer          = null;
   var activeTranslation = null;
   var panelOpen         = false;
+  var focusTimer        = null;
+  var placementReady    = false;
+  var barRef            = null;
 
   /* ── STYLES ─────────────────────────────────────────────────────── */
   var css = [
     '#' + BAR_ID + '{',
-    '  position:fixed;top:0;left:0;right:0;z-index:2147483647;',
-    '  display:flex;align-items:center;gap:12px;padding:0 16px;height:48px;',
-    '  background:#1e1e2e;color:#fff;',
+    '  display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px 12px;',
+    '  box-sizing:border-box;padding:0;',
     '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;',
-    '  box-shadow:0 2px 12px rgba(0,0,0,0.4);box-sizing:border-box;',
+    '  color:inherit;',
     '}',
-    '#' + BAR_ID + ' .rt-label{opacity:.7;white-space:nowrap;font-size:12px;letter-spacing:.3px;}',
+    '#' + BAR_ID + '.rise-translate-bar--cover{',
+    '  display:flex;flex-direction:column;align-items:stretch;gap:10px;',
+    '  width:100%;max-width:320px;margin:16px auto 0;padding:0;',
+    '}',
+    '#' + BAR_ID + '.rise-translate-bar--cover .rt-wrap{width:100%;}',
+    '#' + BAR_ID + '.rise-translate-bar--cover .rt-trigger{width:100%;min-width:0;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating{',
+    '  position:fixed;bottom:16px;right:16px;left:auto;top:auto;z-index:2147483647;',
+    '  width:auto;max-width:calc(100vw - 32px);margin-top:0;padding:10px 14px;',
+    '  background:rgba(30,30,46,.94);color:#fff;border-radius:12px;',
+    '  box-shadow:0 4px 20px rgba(0,0,0,.35);justify-content:flex-start;',
+    '}',
     '#' + BAR_ID + ' .rt-wrap{position:relative;}',
     '#' + BAR_ID + ' .rt-trigger{',
     '  display:flex;align-items:center;gap:8px;',
-    '  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);',
-    '  color:#fff;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;',
+    '  background:rgba(255,255,255,.92);border:1px solid rgba(0,0,0,.15);',
+    '  color:#222;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;',
     '  min-width:180px;justify-content:space-between;user-select:none;',
     '}',
-    '#' + BAR_ID + ' .rt-trigger:hover{background:rgba(255,255,255,.18);}',
+    '#' + BAR_ID + ' .rt-trigger:hover{border-color:rgba(0,0,0,.3);box-shadow:0 0 0 2px rgba(0,0,0,.06);}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rt-trigger{',
+    '  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;',
+    '}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rt-trigger:hover{background:rgba(255,255,255,.18);box-shadow:none;}',
     '#' + BAR_ID + ' .rt-caret{font-size:10px;opacity:.6;transition:transform .2s;display:inline-block;}',
     '#' + BAR_ID + ' .rt-panel{',
     '  visibility:hidden;opacity:0;',
-    '  position:absolute;top:calc(100% + 6px);left:0;',
-    '  background:#1e1e2e;border:1px solid rgba(255,255,255,.2);',
-    '  border-radius:10px;width:240px;overflow:hidden;',
-    '  box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:2147483647;',
-    '  transition:opacity .15s,visibility .15s;',
+    '  position:absolute;left:0;width:240px;overflow:hidden;',
+    '  background:#fff;border:1px solid rgba(0,0,0,.12);color:#222;',
+    '  border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:2147483647;',
     '  pointer-events:none;',
     '}',
-    '#' + BAR_ID + ' .rt-panel.rt-open{visibility:visible;opacity:1;pointer-events:all;}',
+    '#' + BAR_ID + ' .rt-panel.rt-panel--down{top:calc(100% + 6px);bottom:auto;}',
+    '#' + BAR_ID + ' .rt-panel.rt-panel--up{bottom:calc(100% + 6px);top:auto;}',
+    '#' + BAR_ID + ' .rt-panel.rt-open{visibility:visible;opacity:1;pointer-events:all;transition:opacity .15s;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rt-panel{',
+    '  background:#1e1e2e;border:1px solid rgba(255,255,255,.2);color:#fff;',
+    '  box-shadow:0 8px 24px rgba(0,0,0,.5);',
+    '}',
     '#' + BAR_ID + ' .rt-search{',
     '  width:100%;box-sizing:border-box;padding:10px 12px;',
-    '  background:rgba(255,255,255,.08);border:none;border-bottom:1px solid rgba(255,255,255,.1);',
-    '  color:#fff;font-size:13px;outline:none;',
+    '  background:transparent;border:none;border-bottom:1px solid rgba(0,0,0,.08);',
+    '  color:inherit;font-size:13px;outline:none;',
     '}',
-    '#' + BAR_ID + ' .rt-search::placeholder{color:rgba(255,255,255,.4);}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rt-search{',
+    '  background:rgba(255,255,255,.08);border-bottom-color:rgba(255,255,255,.1);color:#fff;',
+    '}',
+    '#' + BAR_ID + ' .rt-search::placeholder{opacity:.45;}',
     '#' + BAR_ID + ' .rt-list{max-height:260px;overflow-y:auto;padding:4px 0;}',
     '#' + BAR_ID + ' .rt-list::-webkit-scrollbar{width:4px;}',
-    '#' + BAR_ID + ' .rt-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:4px;}',
+    '#' + BAR_ID + ' .rt-list::-webkit-scrollbar-thumb{background:rgba(127,127,127,.35);border-radius:4px;}',
     '#' + BAR_ID + ' .rt-option{',
-    '  padding:9px 14px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.85);',
+    '  padding:9px 14px;cursor:pointer;font-size:13px;opacity:.85;',
     '}',
-    '#' + BAR_ID + ' .rt-option:hover{background:rgba(255,255,255,.1);}',
-    '#' + BAR_ID + ' .rt-option.rt-selected{color:#fff;font-weight:500;background:rgba(255,255,255,.12);}',
+    '#' + BAR_ID + ' .rt-option:hover{background:rgba(0,0,0,.06);}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rt-option:hover{background:rgba(255,255,255,.1);}',
+    '#' + BAR_ID + ' .rt-option.rt-selected{font-weight:500;opacity:1;background:rgba(0,0,0,.08);}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rt-option.rt-selected{background:rgba(255,255,255,.12);color:#fff;}',
     '#' + BAR_ID + ' .rt-option.rt-hidden{display:none;}',
     '#' + BAR_ID + ' .rt-reset{',
-    '  background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);',
-    '  border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap;',
+    '  background:transparent;border:1px solid rgba(127,127,127,.35);opacity:.7;',
+    '  border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap;color:inherit;',
     '}',
-    '#' + BAR_ID + ' .rt-reset:hover{border-color:rgba(255,255,255,.5);color:#fff;}',
-    '#' + BAR_ID + ' .rt-status{font-size:11px;opacity:.45;margin-left:auto;white-space:nowrap;}',
+    '#' + BAR_ID + ' .rt-reset:hover{opacity:1;}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rt-reset{',
+    '  border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.6);',
+    '}',
+    '#' + BAR_ID + '.rise-translate-bar--floating .rt-reset:hover{border-color:rgba(255,255,255,.5);color:#fff;}',
     '#' + BAR_ID + ' .rt-spinner{',
-    '  width:14px;height:14px;border:2px solid rgba(255,255,255,.25);',
-    '  border-top-color:#fff;border-radius:50%;flex-shrink:0;',
+    '  width:14px;height:14px;border:2px solid rgba(127,127,127,.3);',
+    '  border-top-color:currentColor;border-radius:50%;flex-shrink:0;',
     '  animation:rt-spin .6s linear infinite;display:none;',
     '}',
-    '@keyframes rt-spin{to{transform:rotate(360deg)}}',
-    'body.rise-has-bar{padding-top:48px !important;margin-top:0 !important;}'
+    '#' + BAR_ID + '.rise-translate-bar--floating .rt-spinner{',
+    '  border-color:rgba(255,255,255,.25);border-top-color:#fff;',
+    '}',
+    '@keyframes rt-spin{to{transform:rotate(360deg)}}'
   ].join('\n');
 
   /* ── INIT ──────────────────────────────────────────────────────── */
   function init() {
     injectStyles();
-    injectBar();
-    var saved = getSavedLang();
-    if (saved) {
-      setTriggerLabel(saved);
-      translatePage(saved);
-    }
-    initObserver();
+    if (!document.getElementById(BAR_ID)) injectBar();
+    waitForCourseShell(function () {
+      placeBar();
+      scheduleCoverPlacementRetries();
+      var saved = getSavedLang();
+      if (saved) {
+        setTriggerLabel(saved);
+        translatePage(saved);
+      }
+      initObserver();
+    });
+    initPlacementObserver();
   }
 
   function injectStyles() {
@@ -144,13 +186,12 @@
 
   /* ── BAR ────────────────────────────────────────────────────────── */
   function injectBar() {
+    if (barRef) return barRef;
+    var existing = document.getElementById(BAR_ID);
+    if (existing) { barRef = existing; return barRef; }
+
     var bar = document.createElement('div');
     bar.id = BAR_ID;
-
-    /* label */
-    var label = document.createElement('span');
-    label.className = 'rt-label';
-    label.textContent = '🌐 Translate:';
 
     /* wrap holds trigger + panel */
     var wrap = document.createElement('div');
@@ -164,7 +205,7 @@
 
     /* panel */
     var panel = document.createElement('div');
-    panel.className = 'rt-panel';
+    panel.className = 'rt-panel rt-panel--down';
 
     /* search input inside panel */
     var search = document.createElement('input');
@@ -199,30 +240,31 @@
       });
     });
 
-    /* ── KEY FIX: toggle open state via a boolean, don't rely on document listener ── */
-    trigger.addEventListener('mousedown', function (e) {
-      e.preventDefault();  /* stops blur from firing on the panel search input */
+    trigger.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (panelOpen) {
+      if (panel.classList.contains('rt-open')) {
         closePanel(trigger, panel);
       } else {
         openPanel(trigger, panel, search);
       }
     });
 
-    /* close only when focus fully leaves the bar */
-    bar.addEventListener('focusout', function (e) {
-      setTimeout(function () {
-        if (!bar.contains(document.activeElement)) {
+    /* deferred so the opening click doesn't immediately close the panel */
+    setTimeout(function () {
+      document.addEventListener('click', function (e) {
+        if (!bar.contains(e.target)) {
           closePanel(trigger, panel);
         }
-      }, 150);
-    });
+      });
+    }, 0);
 
     panel.appendChild(search);
     panel.appendChild(list);
     wrap.appendChild(trigger);
     wrap.appendChild(panel);
+
+    panel.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+    search.addEventListener('click', function (e) { e.stopPropagation(); });
 
     /* spinner */
     var spinner = document.createElement('div');
@@ -241,45 +283,170 @@
       activeTranslation = null;
       setTriggerLabel(null);
       resetBtn.style.display = 'none';
-      status.textContent = 'Powered by Google Translate';
       list.querySelectorAll('.rt-option').forEach(function (o) { o.classList.remove('rt-selected'); });
     });
 
-    /* status text */
-    var status = document.createElement('span');
-    status.className = 'rt-status';
-    status.textContent = 'Powered by Google Translate';
-
-    bar.appendChild(label);
     bar.appendChild(wrap);
     bar.appendChild(spinner);
     bar.appendChild(resetBtn);
-    bar.appendChild(status);
 
-    document.body.insertBefore(bar, document.body.firstChild);
-    document.body.classList.add('rise-has-bar');
+    bar._trigger = trigger;
+    bar._panel   = panel;
+    bar._spinner = spinner;
+    bar._reset   = resetBtn;
+    bar._list    = list;
+    barRef = bar;
+    return bar;
+  }
 
-    /* store refs */
-    bar._spinner  = spinner;
-    bar._status   = status;
-    bar._reset    = resetBtn;
-    bar._list     = list;
+  function isVisible(el) {
+    if (!el || !el.getBoundingClientRect) return false;
+    var rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function findStartButton() {
+    var i, el, candidates, txt, j, cover;
+    cover = document.querySelector('#app .cover, .cover, [class*="cover-page"]');
+    if (cover) {
+      for (i = 0; i < START_SELECTORS.length; i++) {
+        el = cover.querySelector(START_SELECTORS[i]);
+        if (el && isVisible(el)) return el;
+      }
+    }
+    for (i = 0; i < START_SELECTORS.length; i++) {
+      el = document.querySelector(START_SELECTORS[i]);
+      if (el && isVisible(el)) return el;
+    }
+    candidates = document.querySelectorAll('a, button');
+    for (j = 0; j < candidates.length; j++) {
+      txt = (candidates[j].textContent || '').trim().toLowerCase();
+      if (/^(start|begin|resume|continue)(\s+(course|lesson))?$/i.test(txt) && isVisible(candidates[j])) {
+        return candidates[j];
+      }
+    }
+    return null;
+  }
+
+  function scheduleCoverPlacementRetries() {
+    var attempts = 0;
+    var timer = setInterval(function () {
+      var bar = barRef;
+      var startBtn = findStartButton();
+      var placed = bar && (startBtn
+        ? startBtn.nextElementSibling === bar
+        : bar.parentElement === document.body);
+      if (!placed) placeBar();
+      attempts++;
+      if (placed || attempts >= 30) clearInterval(timer);
+    }, 400);
+  }
+
+  function waitForCourseShell(done) {
+    var finished = false;
+    var shellObserver = null;
+    function finish() {
+      if (finished) return;
+      finished = true;
+      if (shellObserver) shellObserver.disconnect();
+      done();
+    }
+    if (findStartButton()) {
+      finish();
+      return;
+    }
+    shellObserver = new MutationObserver(function () {
+      if (findStartButton()) finish();
+    });
+    shellObserver.observe(document.body, { childList: true, subtree: true });
+    setTimeout(finish, 15000);
+  }
+
+  function placeBar() {
+    var bar = barRef || document.getElementById(BAR_ID);
+    if (!bar) return;
+
+    var trigger = bar._trigger || bar.querySelector('.rt-trigger');
+    var panel   = bar._panel   || bar.querySelector('.rt-panel');
+    var startBtn = findStartButton();
+    var needsMove = false;
+    var needsModeSwitch = false;
+
+    if (startBtn) {
+      needsMove = startBtn.nextElementSibling !== bar;
+      needsModeSwitch = bar.classList.contains('rise-translate-bar--floating');
+      if (!needsMove && !needsModeSwitch) return;
+      if (trigger && panel) closePanel(trigger, panel);
+      bar.classList.remove('rise-translate-bar--floating');
+      bar.classList.add('rise-translate-bar--cover');
+      if (panel) {
+        panel.classList.remove('rt-panel--up');
+        panel.classList.add('rt-panel--down');
+      }
+      if (needsMove) startBtn.insertAdjacentElement('afterend', bar);
+      return;
+    }
+
+    needsMove = bar.parentElement !== document.body;
+    needsModeSwitch = bar.classList.contains('rise-translate-bar--cover');
+    if (!needsMove && !needsModeSwitch) return;
+    if (trigger && panel) closePanel(trigger, panel);
+    bar.classList.remove('rise-translate-bar--cover');
+    bar.classList.add('rise-translate-bar--floating');
+    if (panel) {
+      panel.classList.remove('rt-panel--down');
+      panel.classList.add('rt-panel--up');
+    }
+    if (needsMove) document.body.appendChild(bar);
+  }
+
+  function initPlacementObserver() {
+    if (placementReady) return;
+    placementReady = true;
+
+    window.addEventListener('hashchange', function () {
+      placeBar();
+      if (activeTranslation) setTimeout(function () { translatePage(activeTranslation); }, 400);
+    });
+
+    var placementObserver = new MutationObserver(function (mutations) {
+      var relevant = mutations.some(function (m) {
+        var t = m.target;
+        if (t && t.closest && t.closest('#' + BAR_ID)) return false;
+        return true;
+      });
+      if (!relevant) return;
+      clearTimeout(placementObserver._t);
+      placementObserver._t = setTimeout(placeBar, 300);
+    });
+    placementObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class', 'hidden', 'aria-hidden']
+    });
   }
 
   function openPanel(trigger, panel, search) {
+    if (focusTimer) { clearTimeout(focusTimer); focusTimer = null; }
     panelOpen = true;
     panel.classList.add('rt-open');
     trigger.querySelector('.rt-caret').style.transform = 'rotate(180deg)';
-    /* reset search */
     search.value = '';
     panel.querySelectorAll('.rt-option').forEach(function (o) { o.classList.remove('rt-hidden'); });
-    setTimeout(function () { search.focus(); }, 30);
+    focusTimer = setTimeout(function () {
+      focusTimer = null;
+      if (panelOpen) search.focus();
+    }, 30);
   }
 
   function closePanel(trigger, panel) {
+    if (focusTimer) { clearTimeout(focusTimer); focusTimer = null; }
     panelOpen = false;
     panel.classList.remove('rt-open');
     trigger.querySelector('.rt-caret').style.transform = '';
+    var search = panel.querySelector('.rt-search');
+    if (search && document.activeElement === search) search.blur();
   }
 
   function setTriggerLabel(code) {
@@ -301,7 +468,7 @@
     list.querySelectorAll('.rt-option').forEach(function (o) {
       o.classList.toggle('rt-selected', o.getAttribute('data-code') === code);
     });
-    translatePage(code, bar._spinner, bar._status, bar._reset);
+    translatePage(code, bar._spinner, null, bar._reset);
   }
 
   /* ── TEXT NODES ─────────────────────────────────────────────────── */
@@ -435,10 +602,6 @@
 
   function pauseObserver()  { isObserving = false; }
   function resumeObserver() { setTimeout(function () { isObserving = true; }, 800); }
-
-  window.addEventListener('hashchange', function () {
-    if (activeTranslation) setTimeout(function () { translatePage(activeTranslation); }, 400);
-  });
 
   /* ── PERSISTENCE ─────────────────────────────────────────────────── */
   function saveLang(l)    { try { sessionStorage.setItem(STORAGE_KEY, l); }    catch(e){} }
