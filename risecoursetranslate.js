@@ -2,12 +2,11 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in: add <script src="risecoursetranslate.js" defer></script> to index.html
  * Uses Google Translate (free endpoint). No API key required.
- * v1.5 — definitive dropdown fix: stopPropagation on wrap + pointer-events guard
+ * v1.4 — fixed dropdown collapse, removed document click listener
  */
 (function () {
   'use strict';
 
-  /* ── CONFIG ────────────────────────────────────────────────────── */
   var LANGUAGES = [
     { code: 'af', label: 'Afrikaans' },
     { code: 'ar', label: 'Arabic', rtl: true },
@@ -63,64 +62,64 @@
   var isObserving       = false;
   var observer          = null;
   var activeTranslation = null;
+  var panelOpen         = false;
 
   /* ── STYLES ─────────────────────────────────────────────────────── */
   var css = [
     '#' + BAR_ID + '{',
     '  position:fixed;top:0;left:0;right:0;z-index:2147483647;',
     '  display:flex;align-items:center;gap:12px;padding:0 16px;height:48px;',
-    '  background:#1e1e2e;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;',
+    '  background:#1e1e2e;color:#fff;',
+    '  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;',
     '  box-shadow:0 2px 12px rgba(0,0,0,0.4);box-sizing:border-box;',
     '}',
-    '#' + BAR_ID + ' .rise-bar-label{opacity:.7;white-space:nowrap;font-size:12px;letter-spacing:.3px;}',
-    '#' + BAR_ID + ' .rise-dropdown-wrap{position:relative;}',
-    '#' + BAR_ID + ' .rise-trigger{',
+    '#' + BAR_ID + ' .rt-label{opacity:.7;white-space:nowrap;font-size:12px;letter-spacing:.3px;}',
+    '#' + BAR_ID + ' .rt-wrap{position:relative;}',
+    '#' + BAR_ID + ' .rt-trigger{',
     '  display:flex;align-items:center;gap:8px;',
     '  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);',
     '  color:#fff;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;',
     '  min-width:180px;justify-content:space-between;user-select:none;',
-    '  transition:background .15s;',
     '}',
-    '#' + BAR_ID + ' .rise-trigger:hover{background:rgba(255,255,255,.18);}',
-    '#' + BAR_ID + ' .rise-trigger .rise-caret{font-size:10px;opacity:.6;transition:transform .2s;}',
-    '#' + BAR_ID + ' .rise-trigger.open .rise-caret{transform:rotate(180deg);}',
-    '#' + BAR_ID + ' .rise-panel{',
-    '  display:none;position:absolute;top:calc(100% + 6px);left:0;',
+    '#' + BAR_ID + ' .rt-trigger:hover{background:rgba(255,255,255,.18);}',
+    '#' + BAR_ID + ' .rt-caret{font-size:10px;opacity:.6;transition:transform .2s;display:inline-block;}',
+    '#' + BAR_ID + ' .rt-panel{',
+    '  visibility:hidden;opacity:0;',
+    '  position:absolute;top:calc(100% + 6px);left:0;',
     '  background:#1e1e2e;border:1px solid rgba(255,255,255,.2);',
     '  border-radius:10px;width:240px;overflow:hidden;',
     '  box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:2147483647;',
+    '  transition:opacity .15s,visibility .15s;',
+    '  pointer-events:none;',
     '}',
-    '#' + BAR_ID + ' .rise-panel.open{display:block;}',
-    '#' + BAR_ID + ' .rise-search{',
+    '#' + BAR_ID + ' .rt-panel.rt-open{visibility:visible;opacity:1;pointer-events:all;}',
+    '#' + BAR_ID + ' .rt-search{',
     '  width:100%;box-sizing:border-box;padding:10px 12px;',
     '  background:rgba(255,255,255,.08);border:none;border-bottom:1px solid rgba(255,255,255,.1);',
     '  color:#fff;font-size:13px;outline:none;',
     '}',
-    '#' + BAR_ID + ' .rise-search::placeholder{color:rgba(255,255,255,.4);}',
-    '#' + BAR_ID + ' .rise-list{max-height:260px;overflow-y:auto;padding:4px 0;}',
-    '#' + BAR_ID + ' .rise-list::-webkit-scrollbar{width:4px;}',
-    '#' + BAR_ID + ' .rise-list::-webkit-scrollbar-track{background:transparent;}',
-    '#' + BAR_ID + ' .rise-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:4px;}',
-    '#' + BAR_ID + ' .rise-option{',
+    '#' + BAR_ID + ' .rt-search::placeholder{color:rgba(255,255,255,.4);}',
+    '#' + BAR_ID + ' .rt-list{max-height:260px;overflow-y:auto;padding:4px 0;}',
+    '#' + BAR_ID + ' .rt-list::-webkit-scrollbar{width:4px;}',
+    '#' + BAR_ID + ' .rt-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:4px;}',
+    '#' + BAR_ID + ' .rt-option{',
     '  padding:9px 14px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.85);',
-    '  transition:background .1s;',
     '}',
-    '#' + BAR_ID + ' .rise-option:hover{background:rgba(255,255,255,.1);}',
-    '#' + BAR_ID + ' .rise-option.selected{color:#fff;font-weight:500;background:rgba(255,255,255,.12);}',
-    '#' + BAR_ID + ' .rise-option.hidden{display:none;}',
-    '#' + BAR_ID + ' .rise-reset{',
+    '#' + BAR_ID + ' .rt-option:hover{background:rgba(255,255,255,.1);}',
+    '#' + BAR_ID + ' .rt-option.rt-selected{color:#fff;font-weight:500;background:rgba(255,255,255,.12);}',
+    '#' + BAR_ID + ' .rt-option.rt-hidden{display:none;}',
+    '#' + BAR_ID + ' .rt-reset{',
     '  background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);',
-    '  border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;',
-    '  transition:all .15s;white-space:nowrap;',
+    '  border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;white-space:nowrap;',
     '}',
-    '#' + BAR_ID + ' .rise-reset:hover{border-color:rgba(255,255,255,.5);color:#fff;}',
-    '#' + BAR_ID + ' .rise-status{font-size:11px;opacity:.45;margin-left:auto;white-space:nowrap;}',
-    '#' + BAR_ID + ' .rise-spinner{',
+    '#' + BAR_ID + ' .rt-reset:hover{border-color:rgba(255,255,255,.5);color:#fff;}',
+    '#' + BAR_ID + ' .rt-status{font-size:11px;opacity:.45;margin-left:auto;white-space:nowrap;}',
+    '#' + BAR_ID + ' .rt-spinner{',
     '  width:14px;height:14px;border:2px solid rgba(255,255,255,.25);',
     '  border-top-color:#fff;border-radius:50%;flex-shrink:0;',
-    '  animation:rise-spin .6s linear infinite;display:none;',
+    '  animation:rt-spin .6s linear infinite;display:none;',
     '}',
-    '@keyframes rise-spin{to{transform:rotate(360deg)}}',
+    '@keyframes rt-spin{to{transform:rotate(360deg)}}',
     'body.rise-has-bar{padding-top:48px !important;margin-top:0 !important;}'
   ].join('\n');
 
@@ -143,121 +142,112 @@
     document.head.appendChild(s);
   }
 
-  /* ── BAR ─────────────────────────────────────────────────────── */
+  /* ── BAR ────────────────────────────────────────────────────────── */
   function injectBar() {
     var bar = document.createElement('div');
     bar.id = BAR_ID;
-    bar.setAttribute('data-rise-bar', '1');
 
+    /* label */
     var label = document.createElement('span');
-    label.className = 'rise-bar-label';
+    label.className = 'rt-label';
     label.textContent = '🌐 Translate:';
 
-    /* dropdown wrapper */
+    /* wrap holds trigger + panel */
     var wrap = document.createElement('div');
-    wrap.className = 'rise-dropdown-wrap';
+    wrap.className = 'rt-wrap';
 
+    /* trigger button */
     var trigger = document.createElement('button');
-    trigger.className = 'rise-trigger';
-    trigger.setAttribute('aria-haspopup', 'listbox');
-    trigger.setAttribute('aria-expanded', 'false');
-    trigger.innerHTML = '<span class="rise-trigger-text">Select language</span><span class="rise-caret">▼</span>';
+    trigger.className = 'rt-trigger';
+    trigger.type = 'button';
+    trigger.innerHTML = '<span class="rt-trigger-text">Select language</span><span class="rt-caret">▼</span>';
 
+    /* panel */
     var panel = document.createElement('div');
-    panel.className = 'rise-panel';
+    panel.className = 'rt-panel';
 
+    /* search input inside panel */
     var search = document.createElement('input');
-    search.className = 'rise-search';
+    search.className = 'rt-search';
     search.type = 'text';
     search.placeholder = 'Search language…';
     search.setAttribute('autocomplete', 'off');
 
+    /* language list */
     var list = document.createElement('div');
-    list.className = 'rise-list';
-    list.setAttribute('role', 'listbox');
+    list.className = 'rt-list';
 
     LANGUAGES.forEach(function (lang) {
       var opt = document.createElement('div');
-      opt.className = 'rise-option';
+      opt.className = 'rt-option';
       opt.textContent = lang.label;
       opt.setAttribute('data-code', lang.code);
-      opt.setAttribute('role', 'option');
+      /* use mousedown so it fires before blur */
       opt.addEventListener('mousedown', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        selectLanguage(lang.code, lang.label);
+        selectLanguage(lang.code, list);
         closePanel(trigger, panel);
       });
       list.appendChild(opt);
     });
 
-    /* search filter */
-    search.addEventListener('input', function (e) {
-      e.stopPropagation();
+    search.addEventListener('input', function () {
       var q = this.value.toLowerCase();
-      list.querySelectorAll('.rise-option').forEach(function (opt) {
-        opt.classList.toggle('hidden', opt.textContent.toLowerCase().indexOf(q) === -1);
+      list.querySelectorAll('.rt-option').forEach(function (o) {
+        o.classList.toggle('rt-hidden', o.textContent.toLowerCase().indexOf(q) === -1);
       });
     });
 
-    /* ── THE FIX ──────────────────────────────────────────────────
-       Capture-phase listener on the wrap eats ALL click events
-       before they can reach any ancestor (including document).
-       This is more reliable than stopPropagation in bubble phase
-       because Rise's own listeners may also be in capture phase.
-    ────────────────────────────────────────────────────────────── */
-    wrap.addEventListener('click', function (e) {
+    /* ── KEY FIX: toggle open state via a boolean, don't rely on document listener ── */
+    trigger.addEventListener('mousedown', function (e) {
+      e.preventDefault();  /* stops blur from firing on the panel search input */
       e.stopPropagation();
-      e.stopImmediatePropagation();
-    }, true); /* <-- capture:true  */
-
-    trigger.addEventListener('click', function (e) {
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      var isOpen = panel.classList.contains('open');
-      if (isOpen) {
+      if (panelOpen) {
         closePanel(trigger, panel);
       } else {
         openPanel(trigger, panel, search);
       }
     });
 
-    /* Close when clicking anywhere outside the wrap */
-    document.addEventListener('click', function (e) {
-      if (!wrap.contains(e.target)) {
-        closePanel(trigger, panel);
-      }
-    }, true); /* capture:true so it runs before Rise handlers */
+    /* close only when focus fully leaves the bar */
+    bar.addEventListener('focusout', function (e) {
+      setTimeout(function () {
+        if (!bar.contains(document.activeElement)) {
+          closePanel(trigger, panel);
+        }
+      }, 150);
+    });
 
     panel.appendChild(search);
     panel.appendChild(list);
     wrap.appendChild(trigger);
     wrap.appendChild(panel);
 
-    /* spinner + status */
+    /* spinner */
     var spinner = document.createElement('div');
-    spinner.className = 'rise-spinner';
-    spinner.id = 'rise-spinner';
+    spinner.className = 'rt-spinner';
 
+    /* reset button */
     var resetBtn = document.createElement('button');
-    resetBtn.className = 'rise-reset';
+    resetBtn.className = 'rt-reset';
+    resetBtn.type = 'button';
     resetBtn.textContent = 'Reset';
     resetBtn.style.display = 'none';
-    resetBtn.id = 'rise-reset-btn';
-    resetBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
+    resetBtn.addEventListener('mousedown', function (e) {
+      e.preventDefault();
       restorePage();
       clearSavedLang();
       activeTranslation = null;
       setTriggerLabel(null);
-      this.style.display = 'none';
-      document.getElementById('rise-status').textContent = 'Powered by Google Translate';
-      list.querySelectorAll('.rise-option').forEach(function (o) { o.classList.remove('selected'); });
+      resetBtn.style.display = 'none';
+      status.textContent = 'Powered by Google Translate';
+      list.querySelectorAll('.rt-option').forEach(function (o) { o.classList.remove('rt-selected'); });
     });
 
+    /* status text */
     var status = document.createElement('span');
-    status.className = 'rise-status';
-    status.id = 'rise-status';
+    status.className = 'rt-status';
     status.textContent = 'Powered by Google Translate';
 
     bar.appendChild(label);
@@ -269,81 +259,75 @@
     document.body.insertBefore(bar, document.body.firstChild);
     document.body.classList.add('rise-has-bar');
 
-    bar._spinner = spinner;
-    bar._status  = status;
-    bar._reset   = resetBtn;
-    bar._list    = list;
+    /* store refs */
+    bar._spinner  = spinner;
+    bar._status   = status;
+    bar._reset    = resetBtn;
+    bar._list     = list;
   }
 
   function openPanel(trigger, panel, search) {
-    trigger.classList.add('open');
-    trigger.setAttribute('aria-expanded', 'true');
-    panel.classList.add('open');
+    panelOpen = true;
+    panel.classList.add('rt-open');
+    trigger.querySelector('.rt-caret').style.transform = 'rotate(180deg)';
+    /* reset search */
     search.value = '';
-    panel.querySelectorAll('.rise-option').forEach(function (o) { o.classList.remove('hidden'); });
-    setTimeout(function () { search.focus(); }, 50);
+    panel.querySelectorAll('.rt-option').forEach(function (o) { o.classList.remove('rt-hidden'); });
+    setTimeout(function () { search.focus(); }, 30);
   }
 
   function closePanel(trigger, panel) {
-    trigger.classList.remove('open');
-    trigger.setAttribute('aria-expanded', 'false');
-    panel.classList.remove('open');
+    panelOpen = false;
+    panel.classList.remove('rt-open');
+    trigger.querySelector('.rt-caret').style.transform = '';
   }
 
   function setTriggerLabel(code) {
     var bar = document.getElementById(BAR_ID);
     if (!bar) return;
-    var txt = bar.querySelector('.rise-trigger-text');
+    var txt = bar.querySelector('.rt-trigger-text');
     if (!txt) return;
     if (!code) { txt.textContent = 'Select language'; return; }
     var lang = LANGUAGES.find(function (l) { return l.code === code; });
     txt.textContent = lang ? lang.label : code;
   }
 
-  function selectLanguage(code, label) {
+  function selectLanguage(code, list) {
     var bar = document.getElementById(BAR_ID);
     if (!bar) return;
     setTriggerLabel(code);
     saveLang(code);
     activeTranslation = code;
-    if (bar._list) {
-      bar._list.querySelectorAll('.rise-option').forEach(function (o) {
-        o.classList.toggle('selected', o.getAttribute('data-code') === code);
-      });
-    }
+    list.querySelectorAll('.rt-option').forEach(function (o) {
+      o.classList.toggle('rt-selected', o.getAttribute('data-code') === code);
+    });
     translatePage(code, bar._spinner, bar._status, bar._reset);
   }
 
-  /* ── TEXT NODE COLLECTION ──────────────────────────────────────── */
+  /* ── TEXT NODES ─────────────────────────────────────────────────── */
   function getTextNodes() {
-    var skip = ['SCRIPT','STYLE','NOSCRIPT','IFRAME','OPTION','SELECT'];
+    var skip  = ['SCRIPT','STYLE','NOSCRIPT','IFRAME','OPTION','SELECT'];
     var nodes = [];
-    var walk  = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode: function (node) {
-          var p = node.parentElement;
-          if (!p) return NodeFilter.FILTER_REJECT;
-          if (p.closest && p.closest('#' + BAR_ID)) return NodeFilter.FILTER_REJECT;
-          if (p.id === BAR_ID) return NodeFilter.FILTER_REJECT;
-          if (skip.indexOf(p.nodeName) !== -1) return NodeFilter.FILTER_REJECT;
-          var txt = node.nodeValue.trim();
-          if (!txt || txt.length < 2) return NodeFilter.FILTER_SKIP;
-          return NodeFilter.FILTER_ACCEPT;
-        }
+    var walk  = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        var p = node.parentElement;
+        if (!p) return NodeFilter.FILTER_REJECT;
+        if (p.closest && p.closest('#' + BAR_ID)) return NodeFilter.FILTER_REJECT;
+        if (skip.indexOf(p.nodeName) !== -1) return NodeFilter.FILTER_REJECT;
+        var txt = node.nodeValue.trim();
+        if (!txt || txt.length < 2) return NodeFilter.FILTER_SKIP;
+        return NodeFilter.FILTER_ACCEPT;
       }
-    );
+    });
     var n;
     while ((n = walk.nextNode())) nodes.push(n);
     return nodes;
   }
 
-  /* ── TRANSLATION ───────────────────────────────────────────────── */
+  /* ── TRANSLATION ─────────────────────────────────────────────────── */
   function translatePage(lang, spinner, status, resetBtn) {
     var nodes = getTextNodes();
     var toTranslate = [];
-
     nodes.forEach(function (node) {
       if (!originalMap.has(node)) originalMap.set(node, node.nodeValue);
       var orig = originalMap.get(node).trim();
@@ -351,7 +335,6 @@
       cache[lang] = cache[lang] || {};
       if (!cache[lang][orig]) toTranslate.push(orig);
     });
-
     toTranslate = unique(toTranslate);
 
     var langObj = LANGUAGES.find(function (l) { return l.code === lang; });
@@ -367,7 +350,6 @@
     if (status)  status.textContent = 'Translating…';
 
     pauseObserver();
-
     batchTranslate(toTranslate, lang, function (err) {
       if (spinner) spinner.style.display = 'none';
       if (err) {
@@ -389,71 +371,55 @@
       if (!orig) return;
       var trimmed = orig.trim();
       if (cache[lang] && cache[lang][trimmed]) {
-        var lead  = orig.match(/^\s*/)[0];
-        var trail = orig.match(/\s*$/)[0];
-        node.nodeValue = lead + cache[lang][trimmed] + trail;
+        node.nodeValue = orig.match(/^\s*/)[0] + cache[lang][trimmed] + orig.match(/\s*$/)[0];
       }
     });
   }
 
-  /* ── GOOGLE TRANSLATE ──────────────────────────────────────────── */
-  var CHUNK_SIZE = 50;
-
+  /* ── GOOGLE TRANSLATE ────────────────────────────────────────────── */
   function batchTranslate(texts, lang, done) {
-    var chunks  = chunkArray(texts, CHUNK_SIZE);
+    var chunks = chunkArray(texts, 50);
     var pending = chunks.length;
     var errored = null;
-    if (pending === 0) return done(null);
+    if (!pending) return done(null);
     chunks.forEach(function (chunk) {
       googleTranslate(chunk, lang, function (err, results) {
         if (errored) return;
         if (err) { errored = err; return done(err); }
         chunk.forEach(function (orig, i) { cache[lang][orig] = results[i] || orig; });
-        pending--;
-        if (pending === 0) done(null);
+        if (--pending === 0) done(null);
       });
     });
   }
 
   function googleTranslate(texts, targetLang, cb) {
-    var SEP    = '\n||||\n';
-    var joined = texts.join(SEP);
-    var url    = 'https://translate.googleapis.com/translate_a/single'
+    var SEP = '\n||||\n';
+    var url = 'https://translate.googleapis.com/translate_a/single'
       + '?client=gtx&sl=auto&tl=' + encodeURIComponent(targetLang) + '&dt=t'
-      + '&q=' + encodeURIComponent(joined);
-
+      + '&q=' + encodeURIComponent(texts.join(SEP));
     fetch(url)
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (data) {
         var raw = '';
-        if (data && data[0]) data[0].forEach(function (seg) { if (seg && seg[0]) raw += seg[0]; });
-        var parts = raw.split('||||').map(function (s) { return s.replace(/^\n|\n$/g, ''); });
-        cb(null, parts);
+        if (data && data[0]) data[0].forEach(function (s) { if (s && s[0]) raw += s[0]; });
+        cb(null, raw.split('||||').map(function (s) { return s.replace(/^\n|\n$/g, ''); }));
       })
-      .catch(function (err) { cb(err, null); });
+      .catch(function (e) { cb(e, null); });
   }
 
-  /* ── RESTORE ────────────────────────────────────────────────────── */
+  /* ── RESTORE ─────────────────────────────────────────────────────── */
   function restorePage() {
     originalMap.forEach(function (orig, node) { node.nodeValue = orig; });
     document.body.style.direction = '';
   }
 
-  /* ── OBSERVER ───────────────────────────────────────────────────── */
+  /* ── OBSERVER ────────────────────────────────────────────────────── */
   function initObserver() {
     observer = new MutationObserver(function (mutations) {
       if (!activeTranslation || !isObserving) return;
       var relevant = mutations.some(function (m) {
         if (m.target && m.target.closest && m.target.closest('#' + BAR_ID)) return false;
-        if (m.target && m.target.id === BAR_ID) return false;
-        /* only care about actual element nodes being added, not text/attribute churn */
-        for (var i = 0; i < m.addedNodes.length; i++) {
-          if (m.addedNodes[i].nodeType === 1) return true;
-        }
-        return false;
+        return m.addedNodes.length > 0;
       });
       if (relevant) {
         clearTimeout(observer._t);
@@ -462,36 +428,28 @@
         }, 700);
       }
     });
-
     var target = document.querySelector('#app, #root, .content-wrapper') || document.body;
     observer.observe(target, { childList: true, subtree: true });
     isObserving = true;
   }
 
-  function pauseObserver() { isObserving = false; }
+  function pauseObserver()  { isObserving = false; }
   function resumeObserver() { setTimeout(function () { isObserving = true; }, 800); }
 
   window.addEventListener('hashchange', function () {
     if (activeTranslation) setTimeout(function () { translatePage(activeTranslation); }, 400);
   });
 
-  /* ── PERSISTENCE ────────────────────────────────────────────────── */
-  function saveLang(lang)   { try { sessionStorage.setItem(STORAGE_KEY, lang); } catch(e){} }
-  function clearSavedLang() { try { sessionStorage.removeItem(STORAGE_KEY);    } catch(e){} }
-  function getSavedLang()   { try { return sessionStorage.getItem(STORAGE_KEY); } catch(e){ return null; } }
+  /* ── PERSISTENCE ─────────────────────────────────────────────────── */
+  function saveLang(l)    { try { sessionStorage.setItem(STORAGE_KEY, l); }    catch(e){} }
+  function clearSavedLang(){ try { sessionStorage.removeItem(STORAGE_KEY); }   catch(e){} }
+  function getSavedLang() { try { return sessionStorage.getItem(STORAGE_KEY); } catch(e){ return null; } }
 
-  /* ── UTILS ──────────────────────────────────────────────────────── */
-  function unique(arr) {
-    var seen = {};
-    return arr.filter(function (v) { return seen[v] ? false : (seen[v] = true); });
-  }
-  function chunkArray(arr, size) {
-    var out = [];
-    for (var i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-    return out;
-  }
+  /* ── UTILS ───────────────────────────────────────────────────────── */
+  function unique(arr) { var s={}; return arr.filter(function(v){ return s[v]?false:(s[v]=true); }); }
+  function chunkArray(arr, n) { var o=[]; for(var i=0;i<arr.length;i+=n) o.push(arr.slice(i,i+n)); return o; }
 
-  /* ── BOOT ───────────────────────────────────────────────────────── */
+  /* ── BOOT ────────────────────────────────────────────────────────── */
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
