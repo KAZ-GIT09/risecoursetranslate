@@ -2,7 +2,7 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in: add <script src="risecoursetranslate.js" defer></script> to index.html
  * Uses Google Translate (free endpoint). No API key required.
- * v1.4 — fixed dropdown snapping shut on mobile/touch (stopPropagation on wrap covers click + touchstart)
+ * v1.5 — definitive dropdown fix: stopPropagation on wrap + pointer-events guard
  */
 (function () {
   'use strict';
@@ -56,12 +56,12 @@
     { code: 'zu', label: 'Zulu' }
   ];
 
-  var STORAGE_KEY  = 'rise_course_lang';
-  var BAR_ID       = 'rise-translate-bar';
-  var cache        = {};
-  var originalMap  = new Map();
-  var isObserving  = false;
-  var observer     = null;
+  var STORAGE_KEY       = 'rise_course_lang';
+  var BAR_ID            = 'rise-translate-bar';
+  var cache             = {};
+  var originalMap       = new Map();
+  var isObserving       = false;
+  var observer          = null;
   var activeTranslation = null;
 
   /* ── STYLES ─────────────────────────────────────────────────────── */
@@ -183,28 +183,37 @@
       opt.setAttribute('data-code', lang.code);
       opt.setAttribute('role', 'option');
       opt.addEventListener('mousedown', function (e) {
-        e.preventDefault(); /* prevent blur on trigger */
+        e.preventDefault();
+        e.stopPropagation();
         selectLanguage(lang.code, lang.label);
         closePanel(trigger, panel);
       });
       list.appendChild(opt);
     });
 
-    /* search filter — stopPropagation prevents observer firing */
+    /* search filter */
     search.addEventListener('input', function (e) {
       e.stopPropagation();
       var q = this.value.toLowerCase();
       list.querySelectorAll('.rise-option').forEach(function (opt) {
-        var match = opt.textContent.toLowerCase().indexOf(q) !== -1;
-        opt.classList.toggle('hidden', !match);
+        opt.classList.toggle('hidden', opt.textContent.toLowerCase().indexOf(q) === -1);
       });
     });
 
-    /* stop ALL clicks/touches inside the whole dropdown wrap from reaching document */
-    wrap.addEventListener('click',      function (e) { e.stopPropagation(); });
-    wrap.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
+    /* ── THE FIX ──────────────────────────────────────────────────
+       Capture-phase listener on the wrap eats ALL click events
+       before they can reach any ancestor (including document).
+       This is more reliable than stopPropagation in bubble phase
+       because Rise's own listeners may also be in capture phase.
+    ────────────────────────────────────────────────────────────── */
+    wrap.addEventListener('click', function (e) {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }, true); /* <-- capture:true  */
 
-    trigger.addEventListener('click', function () {
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       var isOpen = panel.classList.contains('open');
       if (isOpen) {
         closePanel(trigger, panel);
@@ -213,9 +222,12 @@
       }
     });
 
-    /* close on outside click/touch — wrap's stopPropagation keeps this from firing when inside */
-    document.addEventListener('click',      function () { closePanel(trigger, panel); });
-    document.addEventListener('touchstart', function () { closePanel(trigger, panel); }, { passive: true });
+    /* Close when clicking anywhere outside the wrap */
+    document.addEventListener('click', function (e) {
+      if (!wrap.contains(e.target)) {
+        closePanel(trigger, panel);
+      }
+    }, true); /* capture:true so it runs before Rise handlers */
 
     panel.appendChild(search);
     panel.appendChild(list);
@@ -232,14 +244,14 @@
     resetBtn.textContent = 'Reset';
     resetBtn.style.display = 'none';
     resetBtn.id = 'rise-reset-btn';
-    resetBtn.addEventListener('click', function () {
+    resetBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
       restorePage();
       clearSavedLang();
       activeTranslation = null;
       setTriggerLabel(null);
       this.style.display = 'none';
       document.getElementById('rise-status').textContent = 'Powered by Google Translate';
-      /* clear selected state */
       list.querySelectorAll('.rise-option').forEach(function (o) { o.classList.remove('selected'); });
     });
 
@@ -257,7 +269,6 @@
     document.body.insertBefore(bar, document.body.firstChild);
     document.body.classList.add('rise-has-bar');
 
-    /* store refs for translatePage to use */
     bar._spinner = spinner;
     bar._status  = status;
     bar._reset   = resetBtn;
@@ -269,7 +280,6 @@
     trigger.setAttribute('aria-expanded', 'true');
     panel.classList.add('open');
     search.value = '';
-    /* show all options */
     panel.querySelectorAll('.rise-option').forEach(function (o) { o.classList.remove('hidden'); });
     setTimeout(function () { search.focus(); }, 50);
   }
@@ -285,10 +295,7 @@
     if (!bar) return;
     var txt = bar.querySelector('.rise-trigger-text');
     if (!txt) return;
-    if (!code) {
-      txt.textContent = 'Select language';
-      return;
-    }
+    if (!code) { txt.textContent = 'Select language'; return; }
     var lang = LANGUAGES.find(function (l) { return l.code === code; });
     txt.textContent = lang ? lang.label : code;
   }
@@ -296,18 +303,14 @@
   function selectLanguage(code, label) {
     var bar = document.getElementById(BAR_ID);
     if (!bar) return;
-
     setTriggerLabel(code);
     saveLang(code);
     activeTranslation = code;
-
-    /* mark selected */
     if (bar._list) {
       bar._list.querySelectorAll('.rise-option').forEach(function (o) {
         o.classList.toggle('selected', o.getAttribute('data-code') === code);
       });
     }
-
     translatePage(code, bar._spinner, bar._status, bar._reset);
   }
 
@@ -322,7 +325,6 @@
         acceptNode: function (node) {
           var p = node.parentElement;
           if (!p) return NodeFilter.FILTER_REJECT;
-          /* skip the entire bar */
           if (p.closest && p.closest('#' + BAR_ID)) return NodeFilter.FILTER_REJECT;
           if (p.id === BAR_ID) return NodeFilter.FILTER_REJECT;
           if (skip.indexOf(p.nodeName) !== -1) return NodeFilter.FILTER_REJECT;
@@ -364,7 +366,6 @@
     if (spinner) spinner.style.display = 'block';
     if (status)  status.textContent = 'Translating…';
 
-    /* pause observer while we translate to avoid feedback loop */
     pauseObserver();
 
     batchTranslate(toTranslate, lang, function (err) {
@@ -407,9 +408,7 @@
       googleTranslate(chunk, lang, function (err, results) {
         if (errored) return;
         if (err) { errored = err; return done(err); }
-        chunk.forEach(function (orig, i) {
-          cache[lang][orig] = results[i] || orig;
-        });
+        chunk.forEach(function (orig, i) { cache[lang][orig] = results[i] || orig; });
         pending--;
         if (pending === 0) done(null);
       });
@@ -443,15 +442,18 @@
     document.body.style.direction = '';
   }
 
-  /* ── OBSERVER (Rise SPA slide changes) ──────────────────────────── */
+  /* ── OBSERVER ───────────────────────────────────────────────────── */
   function initObserver() {
     observer = new MutationObserver(function (mutations) {
       if (!activeTranslation || !isObserving) return;
       var relevant = mutations.some(function (m) {
-        /* ignore mutations inside our own bar */
         if (m.target && m.target.closest && m.target.closest('#' + BAR_ID)) return false;
         if (m.target && m.target.id === BAR_ID) return false;
-        return m.addedNodes.length > 0;
+        /* only care about actual element nodes being added, not text/attribute churn */
+        for (var i = 0; i < m.addedNodes.length; i++) {
+          if (m.addedNodes[i].nodeType === 1) return true;
+        }
+        return false;
       });
       if (relevant) {
         clearTimeout(observer._t);
