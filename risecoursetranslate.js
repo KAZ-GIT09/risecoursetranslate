@@ -2,7 +2,7 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in: add <script src="risecoursetranslate.js" defer></script> to index.html
  * Uses Google Translate (free endpoint). No API key required.
- * v1.6.3 — fix dropdown closing while searching (ignore bar mutations, only close on reposition)
+ * v1.6.4 — Rise: skip reposition while open, pointerdown outside-close, no close on move
  */
 (function () {
   'use strict';
@@ -72,6 +72,8 @@
   var focusTimer        = null;
   var placementReady    = false;
   var barRef            = null;
+  var suppressCloseUntil = 0;
+  var placeBarPending   = false;
 
   /* ── STYLES ─────────────────────────────────────────────────────── */
   var css = [
@@ -240,6 +242,9 @@
       });
     });
 
+    trigger.addEventListener('mousedown', function (e) {
+      e.stopPropagation();
+    });
     trigger.addEventListener('click', function (e) {
       e.stopPropagation();
       if (panel.classList.contains('rt-open')) {
@@ -249,22 +254,23 @@
       }
     });
 
-    /* deferred so the opening click doesn't immediately close the panel */
-    setTimeout(function () {
-      document.addEventListener('click', function (e) {
-        if (!bar.contains(e.target)) {
-          closePanel(trigger, panel);
-        }
-      });
-    }, 0);
+    wrap.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+    panel.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+    panel.addEventListener('click', function (e) { e.stopPropagation(); });
+    search.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+    search.addEventListener('click', function (e) { e.stopPropagation(); });
+
+    document.addEventListener('pointerdown', function (e) {
+      if (Date.now() < suppressCloseUntil) return;
+      if (!panelOpen) return;
+      if (eventInBar(bar, e)) return;
+      closePanel(trigger, panel);
+    }, true);
 
     panel.appendChild(search);
     panel.appendChild(list);
     wrap.appendChild(trigger);
     wrap.appendChild(panel);
-
-    panel.addEventListener('mousedown', function (e) { e.stopPropagation(); });
-    search.addEventListener('click', function (e) { e.stopPropagation(); });
 
     /* spinner */
     var spinner = document.createElement('div');
@@ -297,6 +303,39 @@
     bar._list    = list;
     barRef = bar;
     return bar;
+  }
+
+  function isPanelOpen() {
+    return panelOpen;
+  }
+
+  function eventInBar(bar, e) {
+    var path, i;
+    if (!bar || !e) return false;
+    if (e.target && bar.contains(e.target)) return true;
+    if (e.composedPath) {
+      path = e.composedPath();
+      for (i = 0; i < path.length; i++) {
+        if (path[i] === bar) return true;
+      }
+    }
+    return false;
+  }
+
+  function isBarPlacedOnCover(startBtn, bar) {
+    var container;
+    if (!startBtn || !bar) return false;
+    if (startBtn.nextElementSibling === bar) return true;
+    container = startBtn.closest('.cover__header-content, [class*="cover__header"]');
+    return !!(container && container.contains(bar));
+  }
+
+  function schedulePlaceBar() {
+    if (isPanelOpen()) {
+      placeBarPending = true;
+      return;
+    }
+    placeBar();
   }
 
   function isVisible(el) {
@@ -334,9 +373,9 @@
       var bar = barRef;
       var startBtn = findStartButton();
       var placed = bar && (startBtn
-        ? startBtn.nextElementSibling === bar
+        ? isBarPlacedOnCover(startBtn, bar)
         : bar.parentElement === document.body);
-      if (!placed) placeBar();
+      if (!placed) schedulePlaceBar();
       attempts++;
       if (placed || attempts >= 30) clearInterval(timer);
     }, 400);
@@ -365,18 +404,20 @@
   function placeBar() {
     var bar = barRef || document.getElementById(BAR_ID);
     if (!bar) return;
+    if (isPanelOpen()) {
+      placeBarPending = true;
+      return;
+    }
 
-    var trigger = bar._trigger || bar.querySelector('.rt-trigger');
     var panel   = bar._panel   || bar.querySelector('.rt-panel');
     var startBtn = findStartButton();
     var needsMove = false;
     var needsModeSwitch = false;
 
     if (startBtn) {
-      needsMove = startBtn.nextElementSibling !== bar;
+      needsMove = !isBarPlacedOnCover(startBtn, bar);
       needsModeSwitch = bar.classList.contains('rise-translate-bar--floating');
       if (!needsMove && !needsModeSwitch) return;
-      if (trigger && panel) closePanel(trigger, panel);
       bar.classList.remove('rise-translate-bar--floating');
       bar.classList.add('rise-translate-bar--cover');
       if (panel) {
@@ -390,7 +431,6 @@
     needsMove = bar.parentElement !== document.body;
     needsModeSwitch = bar.classList.contains('rise-translate-bar--cover');
     if (!needsMove && !needsModeSwitch) return;
-    if (trigger && panel) closePanel(trigger, panel);
     bar.classList.remove('rise-translate-bar--cover');
     bar.classList.add('rise-translate-bar--floating');
     if (panel) {
@@ -405,11 +445,12 @@
     placementReady = true;
 
     window.addEventListener('hashchange', function () {
-      placeBar();
+      schedulePlaceBar();
       if (activeTranslation) setTimeout(function () { translatePage(activeTranslation); }, 400);
     });
 
     var placementObserver = new MutationObserver(function (mutations) {
+      if (isPanelOpen()) return;
       var relevant = mutations.some(function (m) {
         var t = m.target;
         if (t && t.closest && t.closest('#' + BAR_ID)) return false;
@@ -417,7 +458,7 @@
       });
       if (!relevant) return;
       clearTimeout(placementObserver._t);
-      placementObserver._t = setTimeout(placeBar, 300);
+      placementObserver._t = setTimeout(schedulePlaceBar, 300);
     });
     placementObserver.observe(document.body, {
       childList: true,
@@ -430,6 +471,7 @@
   function openPanel(trigger, panel, search) {
     if (focusTimer) { clearTimeout(focusTimer); focusTimer = null; }
     panelOpen = true;
+    suppressCloseUntil = Date.now() + 200;
     panel.classList.add('rt-open');
     trigger.querySelector('.rt-caret').style.transform = 'rotate(180deg)';
     search.value = '';
@@ -447,6 +489,10 @@
     trigger.querySelector('.rt-caret').style.transform = '';
     var search = panel.querySelector('.rt-search');
     if (search && document.activeElement === search) search.blur();
+    if (placeBarPending) {
+      placeBarPending = false;
+      setTimeout(placeBar, 0);
+    }
   }
 
   function setTriggerLabel(code) {
