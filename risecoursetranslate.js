@@ -1,15 +1,16 @@
 /*!
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in: add <script src="risecoursetranslate.js" defer></script> to index.html
+ * Optional glossary: data-glossary="glossary.csv" — words in the CSV stay untranslated
  * Uses Google Translate (free endpoint). No API key required.
- * v1.6.7 — reset button white outline/text on dark bar
+ * v1.8.1 — simple one-column glossary CSV (all terms protected in every language)
  */
 (function () {
   'use strict';
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.6.7';
+  window.__riseTranslateVersion = '1.8.1';
 
   var LANGUAGES = [
     { code: 'af', label: 'Afrikaans' },
@@ -78,6 +79,9 @@
   var barRef            = null;
   var placeBarPending   = false;
   var panelWrapRef      = null;
+  var glossary          = { keep: [], overrides: {} };
+  var PH_OPEN           = '\uE000';
+  var PH_CLOSE          = '\uE001';
 
   /* ── STYLES ─────────────────────────────────────────────────────── */
   var css = [
@@ -200,18 +204,20 @@
   /* ── INIT ──────────────────────────────────────────────────────── */
   function init() {
     injectStyles();
-    if (!document.getElementById(BAR_ID)) injectBar();
-    waitForCourseShell(function () {
-      placeBar();
-      scheduleCoverPlacementRetries();
-      var saved = getSavedLang();
-      if (saved) {
-        setTriggerLabel(saved);
-        translatePage(saved);
-      }
-      initObserver();
+    loadGlossary(function () {
+      if (!document.getElementById(BAR_ID)) injectBar();
+      waitForCourseShell(function () {
+        placeBar();
+        scheduleCoverPlacementRetries();
+        var saved = getSavedLang();
+        if (saved) {
+          setTriggerLabel(saved);
+          translatePage(saved);
+        }
+        initObserver();
+      });
+      initPlacementObserver();
     });
-    initPlacementObserver();
   }
 
   function injectStyles() {
@@ -609,6 +615,168 @@
     translatePage(code, bar._spinner, null, bar._reset);
   }
 
+  /* ── GLOSSARY ────────────────────────────────────────────────────── */
+  function getScriptEl() {
+    return document.currentScript || document.querySelector('script[src*="risecoursetranslate"]');
+  }
+
+  function getGlossaryUrl() {
+    var script = getScriptEl();
+    var path;
+    if (!script) return null;
+    if (script.getAttribute('data-glossary-url')) {
+      return script.getAttribute('data-glossary-url');
+    }
+    path = script.getAttribute('data-glossary');
+    if (!path) return null;
+    try {
+      return new URL(path, window.location.href).href;
+    } catch (e) {
+      return path;
+    }
+  }
+
+  function emptyGlossary() {
+    return { keep: [], overrides: {} };
+  }
+
+  function normalizeGlossary(data) {
+    var g = emptyGlossary();
+    var lang, term;
+    if (!data || typeof data !== 'object') return g;
+    if (Array.isArray(data.keep)) {
+      g.keep = data.keep.filter(function (t) { return t && String(t).trim(); });
+    }
+    if (data.overrides && typeof data.overrides === 'object') {
+      Object.keys(data.overrides).forEach(function (lang) {
+        g.overrides[lang] = g.overrides[lang] || {};
+        Object.keys(data.overrides[lang]).forEach(function (term) {
+          g.overrides[lang][term] = data.overrides[lang][term];
+        });
+      });
+    }
+    return g;
+  }
+
+  function parseCSVLine(line) {
+    var parts = [];
+    var cur = '';
+    var inQuotes = false;
+    var i, c;
+    for (i = 0; i < line.length; i++) {
+      c = line[i];
+      if (c === '"') {
+        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQuotes = !inQuotes;
+        continue;
+      }
+      if (c === ',' && !inQuotes) {
+        parts.push(cur.trim());
+        cur = '';
+        continue;
+      }
+      cur += c;
+    }
+    parts.push(cur.trim());
+    return parts;
+  }
+
+  function isGlossaryHeader(cols, line) {
+    if (/^term\s*,/i.test(line)) return true;
+    if (cols.length === 1 && /^(term|word|words|glossary|terms?)$/i.test(cols[0])) return true;
+    return false;
+  }
+
+  function parseGlossaryCSV(text) {
+    var g = emptyGlossary();
+    var lines = text.split(/\r?\n/);
+    var start = 0;
+    var i, cols, term, type, lang, translation;
+    lines = lines.filter(function (l) { return l.trim(); });
+    if (lines.length && isGlossaryHeader(parseCSVLine(lines[0]), lines[0])) start = 1;
+    for (i = start; i < lines.length; i++) {
+      cols = parseCSVLine(lines[i]);
+      term = cols[0];
+      if (!term) continue;
+      /* Single-column list, or type blank → protect term in every language */
+      if (cols.length === 1 || !cols[1] || !cols[1].trim()) {
+        g.keep.push(term);
+        continue;
+      }
+      type = cols[1].toLowerCase().trim();
+      if (type === 'keep' || type === 'skip' || type === 'donttranslate' || type === "don't translate") {
+        g.keep.push(term);
+      } else if (type === 'override' || type === 'fix') {
+        lang = (cols[2] || '').toLowerCase().trim();
+        translation = cols[3] || '';
+        if (lang && translation) {
+          g.overrides[lang] = g.overrides[lang] || {};
+          g.overrides[lang][term] = translation;
+        }
+      } else {
+        g.keep.push(term);
+      }
+    }
+    return g;
+  }
+
+  function loadGlossary(done) {
+    var url = getGlossaryUrl();
+    if (!url) {
+      glossary = emptyGlossary();
+      return done();
+    }
+    fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function (text) {
+        var trimmed = text.trim();
+        if (/\.json$/i.test(url) || trimmed.charAt(0) === '{') {
+          glossary = normalizeGlossary(JSON.parse(trimmed));
+        } else {
+          glossary = parseGlossaryCSV(text);
+        }
+        console.info('[risecoursetranslate] Glossary loaded:', glossary.keep.length, 'protected term(s)');
+        done();
+      })
+      .catch(function (e) {
+        glossary = emptyGlossary();
+        console.warn('[risecoursetranslate] Glossary not loaded (' + url + '):', e.message);
+        done();
+      });
+  }
+
+  function getOverride(text, lang) {
+    var map = glossary.overrides[lang];
+    return map && map[text] ? map[text] : null;
+  }
+
+  function protectText(text, keepList) {
+    var map = {};
+    var sorted = keepList.slice().sort(function (a, b) { return b.length - a.length; });
+    var i, term, ph;
+    for (i = 0; i < sorted.length; i++) {
+      term = sorted[i];
+      if (!term || text.indexOf(term) === -1) continue;
+      ph = PH_OPEN + 'g' + i + PH_CLOSE;
+      map[ph] = term;
+      text = text.split(term).join(ph);
+    }
+    return { text: text, map: map };
+  }
+
+  function restoreText(text, map) {
+    var ph;
+    for (ph in map) {
+      if (Object.prototype.hasOwnProperty.call(map, ph)) {
+        text = text.split(ph).join(map[ph]);
+      }
+    }
+    return text;
+  }
+
   /* ── TEXT NODES ─────────────────────────────────────────────────── */
   function getTextNodes() {
     var skip  = ['SCRIPT','STYLE','NOSCRIPT','IFRAME','OPTION','SELECT'];
@@ -638,6 +806,11 @@
       var orig = originalMap.get(node).trim();
       if (orig.length < 2) return;
       cache[lang] = cache[lang] || {};
+      if (cache[lang][orig]) return;
+      if (getOverride(orig, lang)) {
+        cache[lang][orig] = getOverride(orig, lang);
+        return;
+      }
       if (!cache[lang][orig]) toTranslate.push(orig);
     });
     toTranslate = unique(toTranslate);
@@ -686,15 +859,39 @@
     var chunks = chunkArray(texts, 50);
     var pending = chunks.length;
     var errored = null;
+    var i, chunk, packed, toSend, j, item;
     if (!pending) return done(null);
-    chunks.forEach(function (chunk) {
-      googleTranslate(chunk, lang, function (err, results) {
-        if (errored) return;
-        if (err) { errored = err; return done(err); }
-        chunk.forEach(function (orig, i) { cache[lang][orig] = results[i] || orig; });
-        if (--pending === 0) done(null);
+    for (i = 0; i < chunks.length; i++) {
+      chunk = chunks[i];
+      packed = chunk.map(function (orig) {
+        var override = getOverride(orig, lang);
+        if (override) return { orig: orig, override: override };
+        var protectedText = protectText(orig, glossary.keep);
+        return { orig: orig, text: protectedText.text, map: protectedText.map };
       });
-    });
+      toSend = [];
+      for (j = 0; j < packed.length; j++) {
+        if (!packed[j].override) toSend.push(packed[j].text);
+      }
+      (function (packedChunk, sendTexts) {
+        function finishChunk(err, results) {
+          if (errored) return;
+          if (err) { errored = err; return done(err); }
+          var ri = 0;
+          packedChunk.forEach(function (item) {
+            if (item.override) {
+              cache[lang][item.orig] = item.override;
+            } else {
+              cache[lang][item.orig] = restoreText(results[ri] || item.orig, item.map);
+              ri++;
+            }
+          });
+          if (--pending === 0) done(null);
+        }
+        if (!sendTexts.length) return finishChunk(null, []);
+        googleTranslate(sendTexts, lang, finishChunk);
+      })(packed, toSend);
+    }
   }
 
   function googleTranslate(texts, targetLang, cb) {
