@@ -2,21 +2,17 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in (one line in index.html + copy Translation Glossary.csv into course folder):
  * <script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" defer></script>
- * v1.8.6 — auto-loads Translation Glossary.csv from the course folder
+ * v1.8.7 — xAPI fix: auto-load Translation Glossary.js when CSV fetch fails
  */
 (function () {
   'use strict';
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.8.6';
+  window.__riseTranslateVersion = '1.8.7';
   var scriptElRef = document.currentScript;
-  var DEFAULT_GLOSSARY_FILES = [
-    'Translation Glossary.csv',
-    'Translation Glossary.js',
-    'glossary.csv',
-    'glossary.js'
-  ];
+  var GLOSSARY_FETCH_FILES = ['Translation Glossary.csv', 'glossary.csv'];
+  var GLOSSARY_SCRIPT_FILES = ['Translation Glossary.js', 'glossary.js'];
 
   var LANGUAGES = [
     { code: 'af', label: 'Afrikaans' },
@@ -706,20 +702,76 @@
     });
   }
 
-  function loadGlossaryFromUrls(urls, idx, done) {
+  function getGlossaryUrlsForFiles(files) {
+    var urls = [];
+    var i, candidates;
+    for (i = 0; i < files.length; i++) {
+      candidates = getGlossaryCandidateUrls(files[i]);
+      candidates.forEach(function (u) {
+        if (urls.indexOf(u) === -1) urls.push(u);
+      });
+    }
+    return urls;
+  }
+
+  function getJsFallbackUrls(path) {
+    var urls = [];
+    if (path && /\.csv$/i.test(path)) {
+      urls = getGlossaryUrlsForFiles([path.replace(/\.csv$/i, '.js')]);
+    }
+    getGlossaryUrlsForFiles(GLOSSARY_SCRIPT_FILES).forEach(function (u) {
+      if (urls.indexOf(u) === -1) urls.push(u);
+    });
+    return urls;
+  }
+
+  function loadGlossaryViaScript(urls, idx, done) {
+    var s;
+    if (glossary.keep.length > 0) return done();
+    if (window.__riseGlossaryCsv) {
+      return applyGlossaryFromText(window.__riseGlossaryCsv, 'inline-script', done);
+    }
     if (idx >= urls.length) {
       glossary = emptyGlossary();
       window.__riseGlossaryCount = 0;
       window.__riseGlossarySource = null;
+      console.warn('[risecoursetranslate] Glossary not loaded. Add Translation Glossary.js next to index.html');
+      return done();
+    }
+    s = document.createElement('script');
+    s.src = urls[idx];
+    s.onload = function () {
+      if (window.__riseGlossaryCsv) {
+        applyGlossaryFromText(window.__riseGlossaryCsv, urls[idx], done);
+      } else {
+        console.warn('[risecoursetranslate] Glossary script loaded but empty:', urls[idx]);
+        loadGlossaryViaScript(urls, idx + 1, done);
+      }
+    };
+    s.onerror = function () {
+      console.warn('[risecoursetranslate] Glossary script failed:', urls[idx]);
+      loadGlossaryViaScript(urls, idx + 1, done);
+    };
+    document.head.appendChild(s);
+  }
+
+  function loadGlossaryFromUrls(urls, idx, done, scriptFallback) {
+    if (glossary.keep.length > 0) return done();
+    if (idx >= urls.length) {
+      if (scriptFallback && scriptFallback.length) {
+        return loadGlossaryViaScript(scriptFallback, 0, done);
+      }
+      glossary = emptyGlossary();
+      window.__riseGlossaryCount = 0;
+      window.__riseGlossarySource = null;
       console.warn('[risecoursetranslate] Glossary not loaded. Tried:', urls.join(' | '));
-      done();
-      return;
+      return done();
     }
     fetchUrlText(urls[idx])
       .then(function (text) { applyGlossaryFromText(text, urls[idx], done); })
       .catch(function (e) {
         console.warn('[risecoursetranslate] Glossary fetch failed (' + urls[idx] + '):', e.message);
-        loadGlossaryFromUrls(urls, idx + 1, done);
+        loadGlossaryFromUrls(urls, idx + 1, done, scriptFallback);
       });
   }
 
@@ -863,40 +915,27 @@
     return finalizeGlossary(g);
   }
 
-  function getDefaultGlossaryUrls() {
-    var urls = [];
-    var i, file, candidates;
-    for (i = 0; i < DEFAULT_GLOSSARY_FILES.length; i++) {
-      candidates = getGlossaryCandidateUrls(DEFAULT_GLOSSARY_FILES[i]);
-      candidates.forEach(function (u) {
-        if (urls.indexOf(u) === -1) urls.push(u);
-      });
-    }
-    return urls;
-  }
-
   function loadGlossary(done) {
     var inline = getInlineGlossaryText();
     var script = getScriptEl();
-    var path, urls;
+    var path, urls, scriptUrls;
     if (inline) {
       return applyGlossaryFromText(inline, 'inline', done);
     }
+    scriptUrls = getGlossaryUrlsForFiles(GLOSSARY_SCRIPT_FILES);
     if (script && script.getAttribute('data-glossary-url')) {
-      return loadGlossaryFromUrls([script.getAttribute('data-glossary-url')], 0, done);
+      return loadGlossaryFromUrls([script.getAttribute('data-glossary-url')], 0, done, scriptUrls);
     }
     path = script && script.getAttribute('data-glossary');
     if (path) {
       urls = getGlossaryCandidateUrls(path);
-      return loadGlossaryFromUrls(urls, 0, done);
+      return loadGlossaryFromUrls(urls, 0, done, getJsFallbackUrls(path));
     }
-    urls = getDefaultGlossaryUrls();
+    urls = getGlossaryUrlsForFiles(GLOSSARY_FETCH_FILES);
     if (!urls.length) {
-      glossary = emptyGlossary();
-      window.__riseGlossaryCount = 0;
-      return done();
+      return loadGlossaryViaScript(scriptUrls, 0, done);
     }
-    loadGlossaryFromUrls(urls, 0, done);
+    loadGlossaryFromUrls(urls, 0, done, scriptUrls);
   }
 
   function getOverride(text, lang) {
