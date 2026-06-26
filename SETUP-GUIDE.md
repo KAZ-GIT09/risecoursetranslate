@@ -142,8 +142,13 @@ Glossary loaded: 49 protected term(s) from embedded-csv
 |------|---------|
 | `risecoursetranslate.js` | Main translator (CDN) |
 | `Update Glossary.command` | Double-click to sync CSV into course |
-| `glossary.example.csv` | Example format |
-| `SETUP-GUIDE.md` | This file |
+| `scripts/update-glossary.py` | Backend for Update Glossary |
+| `scripts/verify-glossary.mjs` | Dev check — CSV parses correctly |
+| `glossary.example.csv` | Example glossary format |
+| `glossary-course-folder.example.txt` | Template for course path |
+| `test.html` | Local test page |
+| `SETUP-GUIDE.md` | Setup instructions |
+| `CHAT-SUMMARY.md` | Project history and issues log |
 
 ---
 
