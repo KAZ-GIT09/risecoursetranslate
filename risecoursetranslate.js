@@ -2,14 +2,14 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in (one line in index.html + copy Translation Glossary.csv into course folder):
  * <script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
- * v1.8.9 — CSV only: embedded glossary in index.html via Update Glossary (no .js files)
+ * v1.9.0 — floating language box moved to bottom-left
  */
 (function () {
   'use strict';
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.8.9';
+  window.__riseTranslateVersion = '1.9.0';
   var scriptElRef = document.currentScript;
   var GLOSSARY_FETCH_FILES = ['Translation Glossary.csv', 'glossary.csv'];
 
@@ -98,7 +98,7 @@
     '#' + BAR_ID + '.rise-translate-bar--cover .rt-wrap{width:100%;}',
     '#' + BAR_ID + '.rise-translate-bar--cover .rt-trigger{width:100%;min-width:0;}',
     '#' + BAR_ID + '.rise-translate-bar--floating{',
-    '  position:fixed;bottom:16px;right:16px;left:auto;top:auto;z-index:2147483647;',
+    '  position:fixed;bottom:16px;left:16px;right:auto;top:auto;z-index:2147483647;',
     '  width:auto;max-width:calc(100vw - 32px);margin-top:0;padding:10px 14px;',
     '  background:rgba(30,30,46,.94);color:#fff;border-radius:12px;',
     '  box-shadow:0 4px 20px rgba(0,0,0,.35);justify-content:flex-start;',
