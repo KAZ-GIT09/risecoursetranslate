@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Code block iframe test</title>
+  <script src="risecoursetranslate.js" defer></script>
+</head>
+<body>
+  <h1>Course shell (mock Rise)</h1>
+  <p>Change language with the bar; the iframe below should follow.</p>
+  <iframe id="lesson" title="lesson" style="width:100%;height:420px;border:1px solid #ccc"></iframe>
+  <script>
+    var lesson = document.getElementById('lesson');
+    lesson.srcdoc = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>'
+      + '<h1>Inside code block</h1><p>This paragraph should translate with the course bar.</p>'
+      + '<script src="translate-core.js" defer><\/script></body></html>';
+  </script>
+</body>
+</html>

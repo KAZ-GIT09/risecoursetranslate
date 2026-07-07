@@ -2,6 +2,7 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in (one line in index.html + copy Translation Glossary.csv into course folder):
  * <script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
+ * v1.10.1 — code blocks: sessionStorage sync fallback for Rise iframe nesting
  * v1.10.0 — code-block aware: broadcasts the active language to any Rise
  *           code block running translate-core.js, and skips walking the
  *           insides of those blocks so they are not double-translated.
@@ -13,7 +14,7 @@
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.10.0';
+  window.__riseTranslateVersion = '1.10.1';
   var scriptElRef = document.currentScript;
   var GLOSSARY_FETCH_FILES = ['Translation Glossary.csv', 'glossary.csv'];
 
@@ -216,13 +217,16 @@
         scheduleCoverPlacementRetries();
         var saved = getSavedLang();
         if (saved) {
+          activeTranslation = saved;
           setTriggerLabel(saved);
           translatePage(saved);
+          broadcastLangToBlocks(saved);
         }
         initObserver();
         // Keep code blocks in sync as Rise mounts them on scroll and on
         // lesson change. A block ignores a repeat of the language it
         // already shows (see translate-core.js), so this stays cheap.
+        broadcastLangToBlocks(activeTranslation || getSavedLang() || 'en');
         setInterval(function () {
           broadcastLangToBlocks(activeTranslation || getSavedLang() || 'en');
         }, 1500);
@@ -637,12 +641,20 @@
      them — this section is purely additive. See CODE-BLOCKS.md. */
   function broadcastLangToBlocks(code) {
     var lang = code || 'en';
+    if (lang === 'en') clearSavedLang();
+    else saveLang(lang);
     (function post(win) {
-      var frames;
+      var i, f, frames;
+      try {
+        for (i = 0; win.frames && i < win.frames.length; i++) {
+          try { win.frames[i].postMessage({ type: 'rise-lang', lang: lang }, '*'); } catch (e) {}
+          try { post(win.frames[i]); } catch (e) {}
+        }
+      } catch (e) {}
       try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
-      frames.forEach(function (f) {
-        try { if (f.contentWindow) f.contentWindow.postMessage({ type: 'rise-lang', lang: lang }, '*'); } catch (e) {}
-        try { if (f.contentWindow) post(f.contentWindow); } catch (e) {}
+      frames.forEach(function (frame) {
+        try { if (frame.contentWindow) frame.contentWindow.postMessage({ type: 'rise-lang', lang: lang }, '*'); } catch (e) {}
+        try { if (frame.contentWindow) post(frame.contentWindow); } catch (e) {}
       });
     })(window);
   }

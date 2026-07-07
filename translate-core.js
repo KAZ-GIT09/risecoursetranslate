@@ -31,7 +31,8 @@
   // Mark this document so a course-level bar (risecoursetranslate.js) knows
   // this block manages its own translation, and skips walking its insides.
   try { document.documentElement.setAttribute("data-tc-managed", "1"); } catch (e) {}
-  try { window.TRANSLATE_CORE_VERSION = "1.0"; } catch (e) {}
+  try { window.TRANSLATE_CORE_VERSION = "1.1"; } catch (e) {}
+  var STORAGE_KEY = "rise_course_lang";
   try { window.TC_STATS = window.TC_STATS || { observerFires: 0, cacheReapplies: 0, fullPasses: 0, netFetches: 0 }; } catch (e) {}
   // Set window.TC_DEBUG = true (before or after load) to log the counters
   // every two seconds. A fast-climbing cacheReapplies count means a block is
@@ -291,11 +292,17 @@
     var sel = document.getElementById("tc-lang");
     if (sel && sel.value !== currentLang) sel.value = currentLang;
     if (currentLang === lastApplied) return;   // already showing this language
-    lastApplied = currentLang;
-    if (currentLang === "en") { resetAll(); return; }
+    if (currentLang === "en") {
+      lastApplied = currentLang;
+      resetAll();
+      return;
+    }
+    var pending = currentLang;
     applyLanguage(currentLang).catch(function (e) {
       lastApplied = null;   // allow a retry after a failure
       setStatus("error: " + e.message + " (endpoint blocked or rate limited)");
+    }).then(function () {
+      if (pending === currentLang) lastApplied = currentLang;
     });
   }
 
@@ -311,17 +318,42 @@
     }
   });
 
-  // Ask the course bar which language to show, and keep asking on a loop so
-  // the block reacts to language changes, not just the first answer. The bar
-  // replies with the current language; setLang ignores a repeat of the
-  // language already shown, so this polling stays cheap.
-  function pollBar() {
-    try { (window.top || window.parent).postMessage({ type: "rise-ready" }, "*"); } catch (e) {}
+  // Ask the course bar which language to show. Rise nests code blocks several
+  // iframes deep and posting only to window.top often misses the page that
+  // loaded risecoursetranslate.js (for example when the LMS wraps the course).
+  // Announce to every ancestor window, not just top.
+  function announceReady() {
+    var w = window;
+    while (w) {
+      try { w.postMessage({ type: "rise-ready" }, "*"); } catch (e) {}
+      if (!w.parent || w.parent === w) break;
+      w = w.parent;
+    }
   }
   if (window.parent && window.parent !== window) {
-    pollBar();
-    setInterval(pollBar, 1200);
+    announceReady();
+    setInterval(announceReady, 1200);
   }
+
+  // Same-origin fallback when postMessage does not reach the course bar
+  // (common in Rise xAPI packages). The bar stores the active language in
+  // sessionStorage; the storage event fires in sibling iframes.
+  function syncLangFromStorage() {
+    var lang;
+    try { lang = sessionStorage.getItem(STORAGE_KEY); } catch (e) { return; }
+    if (!lang) lang = "en";
+    if (lang !== "en") {
+      parentControls = true;
+      hideOwnSelector();
+    }
+    setLang(lang);
+  }
+  window.addEventListener("storage", function (ev) {
+    if (ev.key !== STORAGE_KEY) return;
+    parentControls = true;
+    hideOwnSelector();
+    setLang(ev.newValue || "en");
+  });
 
   /* ---------------------- own selector (standalone) ----------------- */
   function buildSelector() {
@@ -352,8 +384,18 @@
   /* ---------------------------- init -------------------------------- */
   function init() {
     root = document.body;
-    buildSelector();
     observer.observe(root, { childList: true, subtree: true });
+    // Standalone demo pages get their own selector; embedded Rise blocks
+    // inherit the course bar and only show a fallback if nothing connects.
+    if (window.parent === window) {
+      buildSelector();
+    } else {
+      syncLangFromStorage();
+      setInterval(syncLangFromStorage, 800);
+      setTimeout(function () {
+        if (!parentControls) buildSelector();
+      }, 5000);
+    }
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
