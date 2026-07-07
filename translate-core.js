@@ -31,8 +31,9 @@
   // Mark this document so a course-level bar (risecoursetranslate.js) knows
   // this block manages its own translation, and skips walking its insides.
   try { document.documentElement.setAttribute("data-tc-managed", "1"); } catch (e) {}
-  try { window.TRANSLATE_CORE_VERSION = "1.1"; } catch (e) {}
+  try { window.TRANSLATE_CORE_VERSION = "1.2"; } catch (e) {}
   var STORAGE_KEY = "rise_course_lang";
+  var GLOSSARY_STORAGE_KEY = "rise_course_glossary_keep";
   try { window.TC_STATS = window.TC_STATS || { observerFires: 0, cacheReapplies: 0, fullPasses: 0, netFetches: 0 }; } catch (e) {}
   // Set window.TC_DEBUG = true (before or after load) to log the counters
   // every two seconds. A fast-climbing cacheReapplies count means a block is
@@ -47,6 +48,118 @@
   var ENGINE = "google";                 // "google" or "deepl"
   var ATTRS  = ["aria-label", "title", "alt", "placeholder"];
   var KEEP   = ["TM Forum", "ODA", "AN", "SLA"];
+  var courseKeep = [];
+
+  function trimTerm(t) {
+    return String(t).replace(/\u00a0/g, " ").trim();
+  }
+
+  function getKeepList() {
+    var seen = {};
+    var out = [];
+    function add(term) {
+      term = trimTerm(term);
+      if (!term || seen[term]) return;
+      seen[term] = true;
+      out.push(term);
+    }
+    KEEP.forEach(add);
+    courseKeep.forEach(add);
+    out.sort(function (a, b) { return b.length - a.length; });
+    return out;
+  }
+
+  function syncGlossaryFromStorage() {
+    try {
+      var raw = sessionStorage.getItem(GLOSSARY_STORAGE_KEY);
+      if (!raw) return false;
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return false;
+      var next = parsed.map(trimTerm).filter(Boolean);
+      var changed = JSON.stringify(next) !== JSON.stringify(courseKeep);
+      courseKeep = next;
+      if (changed) {
+        cache = {};
+        lastApplied = null;
+        if (currentLang !== "en") setLang(currentLang);
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function findGlossaryMatches(text, keepList) {
+    var all = [];
+    var i, term, re, m;
+    if (!text || !keepList.length) return [];
+    for (i = 0; i < keepList.length; i++) {
+      term = keepList[i];
+      if (!term) continue;
+      re = new RegExp(escapeRegex(term), "gi");
+      while ((m = re.exec(text)) !== null) {
+        all.push({ start: m.index, end: m.index + m[0].length });
+        if (m[0].length === 0) re.lastIndex++;
+      }
+    }
+    all.sort(function (a, b) {
+      var lenDiff = (b.end - b.start) - (a.end - a.start);
+      if (lenDiff !== 0) return lenDiff;
+      return a.start - b.start;
+    });
+    var picked = [];
+    all.forEach(function (match) {
+      var overlaps = picked.some(function (p) {
+        return !(match.end <= p.start || match.start >= p.end);
+      });
+      if (!overlaps) picked.push(match);
+    });
+    picked.sort(function (a, b) { return a.start - b.start; });
+    return picked;
+  }
+
+  function buildSegments(text, matches) {
+    var segments = [];
+    var pos = 0;
+    var i, m;
+    for (i = 0; i < matches.length; i++) {
+      m = matches[i];
+      if (m.start > pos) segments.push({ type: "text", value: text.slice(pos, m.start) });
+      segments.push({ type: "term", value: text.slice(m.start, m.end) });
+      pos = m.end;
+    }
+    if (pos < text.length) segments.push({ type: "text", value: text.slice(pos) });
+    if (!segments.length) segments.push({ type: "text", value: text });
+    return segments;
+  }
+
+  function assembleFromSegments(segments, translatedParts) {
+    var ti = 0;
+    return segments.map(function (seg) {
+      if (seg.type === "term") return seg.value;
+      if (trimTerm(seg.value).length < 2) return seg.value;
+      return translatedParts[ti++] || seg.value;
+    }).join("");
+  }
+
+  function translateProtected(text, target) {
+    var src = String(text);
+    var keepList = getKeepList();
+    var matches = findGlossaryMatches(src, keepList);
+    if (!matches.length) return translateText(src, target);
+    var segments = buildSegments(src, matches);
+    var parts = [];
+    segments.forEach(function (seg) {
+      if (seg.type === "text" && trimTerm(seg.value).length >= 2) parts.push(seg.value);
+    });
+    if (!parts.length) return Promise.resolve(src);
+    return Promise.all(parts.map(function (part) { return translateText(part, target); }))
+      .then(function (translated) { return assembleFromSegments(segments, translated); });
+  }
   var LANGS  = [
     { code: "en", name: "English" },
     { code: "fr", name: "French" },
@@ -145,8 +258,13 @@
       cache[key] = src;
       return Promise.resolve({ value: src, cached: false });
     }
+    var keepList = getKeepList();
+    if (keepList.indexOf(src) !== -1) {
+      cache[key] = src;
+      return Promise.resolve({ value: src, cached: false });
+    }
     if (window.TC_STATS) window.TC_STATS.netFetches++;
-    return translateText(src, lang).then(function (out) {
+    return translateProtected(src, lang).then(function (out) {
       cache[key] = out;
       return { value: out, cached: false };
     });
@@ -349,10 +467,18 @@
     setLang(lang);
   }
   window.addEventListener("storage", function (ev) {
-    if (ev.key !== STORAGE_KEY) return;
-    parentControls = true;
-    hideOwnSelector();
-    setLang(ev.newValue || "en");
+    if (ev.key === STORAGE_KEY) {
+      parentControls = true;
+      hideOwnSelector();
+      setLang(ev.newValue || "en");
+      return;
+    }
+    if (ev.key === GLOSSARY_STORAGE_KEY) {
+      syncGlossaryFromStorage();
+      cache = {};
+      lastApplied = null;
+      if (currentLang !== "en") setLang(currentLang);
+    }
   });
 
   /* ---------------------- own selector (standalone) ----------------- */
@@ -390,7 +516,9 @@
     if (window.parent === window) {
       buildSelector();
     } else {
+      syncGlossaryFromStorage();
       syncLangFromStorage();
+      setInterval(syncGlossaryFromStorage, 2000);
       setInterval(syncLangFromStorage, 800);
       setTimeout(function () {
         if (!parentControls) buildSelector();

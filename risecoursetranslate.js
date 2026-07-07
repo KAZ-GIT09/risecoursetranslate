@@ -2,6 +2,8 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in (one line in index.html + copy Translation Glossary.csv into course folder):
  * <script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
+ * v1.10.2 — glossary: translate outermost blocks (Rise splits terms across spans);
+ *           share glossary with code blocks via sessionStorage
  * v1.10.1 — code blocks: sessionStorage sync fallback for Rise iframe nesting
  * v1.10.0 — code-block aware: broadcasts the active language to any Rise
  *           code block running translate-core.js, and skips walking the
@@ -14,7 +16,7 @@
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.10.1';
+  window.__riseTranslateVersion = '1.10.2';
   var scriptElRef = document.currentScript;
   var GLOSSARY_FETCH_FILES = ['Translation Glossary.csv', 'glossary.csv'];
 
@@ -67,6 +69,7 @@
   ];
 
   var STORAGE_KEY       = 'rise_course_lang';
+  var GLOSSARY_STORAGE_KEY = 'rise_course_glossary_keep';
   var BAR_ID            = 'rise-translate-bar';
   var START_SELECTORS   = [
     'a.cover__header-content-action-link',
@@ -703,7 +706,7 @@
   }
 
   function getInlineGlossaryText() {
-    var el, script, elId, prev, b64;
+    var el, script, elId, prev, next, b64;
     if (window.__riseGlossaryCsv) return window.__riseGlossaryCsv;
     el = document.getElementById('rise-glossary');
     if (el) return el.textContent;
@@ -722,7 +725,23 @@
     if (prev && prev.getAttribute('data-rise-glossary') !== null) {
       return prev.textContent;
     }
+    next = script.nextElementSibling;
+    if (next && next.getAttribute('data-rise-glossary') !== null) {
+      return next.textContent;
+    }
     return null;
+  }
+
+  function publishGlossaryStorage() {
+    try {
+      sessionStorage.setItem(GLOSSARY_STORAGE_KEY, JSON.stringify(glossary.keep));
+    } catch (e) {}
+  }
+
+  function onGlossaryReady() {
+    publishGlossaryStorage();
+    cache = {};
+    if (activeTranslation) translatePage(activeTranslation);
   }
 
   function extractCsvFromGlossaryJs(text) {
@@ -751,6 +770,7 @@
       console.info('[risecoursetranslate] Glossary loaded:', glossary.keep.length, 'protected term(s) from', source);
       window.__riseGlossaryCount = glossary.keep.length;
       window.__riseGlossarySource = source;
+      onGlossaryReady();
       done();
     } catch (e) {
       glossary = emptyGlossary();
@@ -866,6 +886,7 @@
   function finalizeGlossary(g) {
     g.keep = g.keep.map(trimTerm).filter(Boolean);
     g.keep = g.keep.filter(function (t, i) { return g.keep.indexOf(t) === i; });
+    g.keep.sort(function (a, b) { return b.length - a.length; });
     return g;
   }
 
@@ -1053,7 +1074,10 @@
         if (seen && seen.has(el)) return;
         if (el.closest && (el.closest('#' + BAR_ID) || el.closest('.rt-panel'))) return;
         if (el.closest && el.closest('script,style,noscript')) return;
-        if (el.querySelector(BLOCK_SEL)) return;
+        // Rise often splits one phrase across nested spans. Translate the
+        // outermost matching block so glossary terms like "Digital Twin" stay
+        // intact instead of being split across child elements.
+        if (el.parentElement && el.parentElement.closest(BLOCK_SEL)) return;
         var text = el.textContent;
         if (!text || trimTerm(text).length < 2) return;
         if (seen) seen.add(el);
