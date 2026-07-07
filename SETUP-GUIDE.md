@@ -35,7 +35,7 @@ Paste once in **`scormcontent/index.html`**. **Your team does not update this.**
 
 ## Current version
 
-**v1.10.0**
+**v1.10.4**
 
 ---
 
@@ -121,7 +121,7 @@ Glossary loaded: 49 protected term(s) from embedded-csv
 
 | Check | Expected |
 |-------|----------|
-| `window.__riseTranslateVersion` | `"1.10.0"` |
+| `window.__riseTranslateVersion` | `"1.10.4"` |
 | `window.__riseGlossaryCount` | `49` (or your term count) |
 | Console | `Glossary loaded: X protected term(s)` |
 
@@ -133,6 +133,7 @@ Glossary loaded: 49 protected term(s) from embedded-csv
 |---------|-----|
 | Glossary count = 0 | Run **Update Glossary** after editing CSV |
 | Glossary fetch failed | OK if `embedded-csv` loads — run Update Glossary |
+| Terms still translate (glossary ignored) | Upgrade to v1.10.4+ — older versions double-encoded the CSV filename, causing a 404 |
 | Re-publish from Rise | Re-run **Update Glossary** (re-embeds CSV into index.html) |
 
 ---
@@ -183,4 +184,4 @@ Open `test.html` in a browser (with a local server if needed for glossary load).
 
 ---
 
-*Last updated: July 2026 — merged the code-block translation feature (v1.10.0) into main. See CHAT-SUMMARY.md for full history.*
+*Last updated: July 2026 — v1.10.4 fixes glossary CSV fetch for filenames with spaces. See CHAT-SUMMARY.md for full history.*
