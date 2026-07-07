@@ -2,6 +2,7 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in (one line in index.html + copy Translation Glossary.csv into course folder):
  * <script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
+ * v1.10.5 — glossary: word-boundary matching so short terms like "IT" don't match inside words
  * v1.10.4 — glossary: fix double-encoding in CSV fetch (spaces in filename caused 404)
  * v1.10.3 — glossary: clearer load failure status; supports Translation Glossary.js fallback
  * v1.10.2 — glossary: translate outermost blocks (Rise splits terms across spans);
@@ -18,7 +19,7 @@
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.10.4';
+  window.__riseTranslateVersion = '1.10.5';
   var scriptElRef = document.currentScript;
   var GLOSSARY_FETCH_FILES = ['Translation Glossary.csv', 'glossary.csv', 'Translation Glossary.js'];
 
@@ -990,6 +991,13 @@
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
+  function buildTermPattern(term) {
+    var escaped = escapeRegex(term);
+    var prefix = /^\w/.test(term) ? '\\b' : '';
+    var suffix = /\w$/.test(term) ? '\\b' : '';
+    return prefix + escaped + suffix;
+  }
+
   function findGlossaryMatches(text, keepList) {
     var all = [];
     var i, term, re, m;
@@ -997,7 +1005,7 @@
     for (i = 0; i < keepList.length; i++) {
       term = keepList[i];
       if (!term) continue;
-      re = new RegExp(escapeRegex(term), 'gi');
+      re = new RegExp(buildTermPattern(term), 'gi');
       while ((m = re.exec(text)) !== null) {
         all.push({ start: m.index, end: m.index + m[0].length });
         if (m[0].length === 0) re.lastIndex++;

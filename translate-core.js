@@ -93,6 +93,13 @@
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
+  function buildTermPattern(term) {
+    var escaped = escapeRegex(term);
+    var prefix = /^\w/.test(term) ? '\\b' : '';
+    var suffix = /\w$/.test(term) ? '\\b' : '';
+    return prefix + escaped + suffix;
+  }
+
   function findGlossaryMatches(text, keepList) {
     var all = [];
     var i, term, re, m;
@@ -100,7 +107,7 @@
     for (i = 0; i < keepList.length; i++) {
       term = keepList[i];
       if (!term) continue;
-      re = new RegExp(escapeRegex(term), "gi");
+      re = new RegExp(buildTermPattern(term), "gi");
       while ((m = re.exec(text)) !== null) {
         all.push({ start: m.index, end: m.index + m[0].length });
         if (m[0].length === 0) re.lastIndex++;
