@@ -9,6 +9,7 @@ Summary of the risecoursetranslate project and how to use it in Articulate Rise 
 - Adds a language dropdown to Rise courses
 - Translates course text via Google Translate (free, no API key)
 - Keeps glossary terms **untranslated** in every language (brand names, acronyms, etc.)
+- **New in v1.10.0:** translates custom HTML/JavaScript code blocks too, not just Rise's own text and video captions — see the **Code blocks** section below and `CODE-BLOCKS.md`
 
 **GitHub repo:** https://github.com/Moyour/risecoursetranslate
 
@@ -34,7 +35,7 @@ Paste once in **`scormcontent/index.html`**. **Your team does not update this.**
 
 ## Current version
 
-**v1.8.9**
+**v1.10.0**
 
 ---
 
@@ -120,7 +121,7 @@ Glossary loaded: 49 protected term(s) from embedded-csv
 
 | Check | Expected |
 |-------|----------|
-| `window.__riseTranslateVersion` | `"1.8.9"` |
+| `window.__riseTranslateVersion` | `"1.10.0"` |
 | `window.__riseGlossaryCount` | `49` (or your term count) |
 | Console | `Glossary loaded: X protected term(s)` |
 
@@ -136,18 +137,42 @@ Glossary loaded: 49 protected term(s) from embedded-csv
 
 ---
 
+## Translating code blocks (new in v1.10.0)
+
+If a lesson has a custom HTML/JavaScript code block (an interaction, diagram,
+or form built with custom code — not standard Rise blocks), that content is
+**not** translated by the one line above by itself. Add one more line inside
+that specific code block, near the bottom of its HTML:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/translate-core.js" defer></script>
+```
+
+That's it — the block then follows the course's language dropdown
+automatically. No changes needed to `index.html` for this.
+
+- To keep specific text in English inside a block (code samples, brand
+  names), wrap it: `<span data-notranslate>ODA Canvas</span>`
+- Full explanation of how this works, troubleshooting, and a worked example
+  (`code-block.html`) live in **`CODE-BLOCKS.md`**
+
+---
+
 ## Files in this repo
 
 | File | Purpose |
 |------|---------|
-| `risecoursetranslate.js` | Main translator (CDN) |
+| `risecoursetranslate.js` | Main translator (CDN) — the course-level bar |
+| `translate-core.js` | Translator for individual code blocks (CDN) — one line per block |
+| `code-block.html` | Worked example of a code block using `translate-core.js` |
 | `Update Glossary.command` | Double-click to sync CSV into course |
 | `scripts/update-glossary.py` | Backend for Update Glossary |
 | `scripts/verify-glossary.mjs` | Dev check — CSV parses correctly |
 | `glossary.example.csv` | Example glossary format |
 | `glossary-course-folder.example.txt` | Template for course path |
 | `test.html` | Local test page |
-| `SETUP-GUIDE.md` | Setup instructions |
+| `SETUP-GUIDE.md` | Setup instructions (this file) |
+| `CODE-BLOCKS.md` | How code-block translation works, and how to add it |
 | `CHAT-SUMMARY.md` | Project history and issues log |
 
 ---
@@ -158,4 +183,4 @@ Open `test.html` in a browser (with a local server if needed for glossary load).
 
 ---
 
-*Last updated: June 2025 — chat summary for Moyour / ODF Awareness course.*
+*Last updated: July 2026 — merged the code-block translation feature (v1.10.0) into main. See CHAT-SUMMARY.md for full history.*

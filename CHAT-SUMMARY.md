@@ -2,10 +2,15 @@
 
 ## Project goal
 
-Add translation to Articulate Rise **xAPI** courses via one CDN script line, while keeping a private glossary of terms (ODF, TM Forum, Digital Twin, etc.) **untranslated** in every language.
+Add translation to Articulate Rise **xAPI** courses via one CDN script line, while keeping a private glossary of terms (ODF, TM Forum, Digital Twin, etc.) **untranslated** in every language, and — as of v1.10.0 — also translating custom HTML/JavaScript **code blocks**, not just Rise's own text and captions.
 
 **Repo:** https://github.com/Moyour/risecoursetranslate  
-**Current version:** v1.8.9 (`@main` on CDN)
+**Current version:** v1.10.0 (`@main` on CDN)
+
+**Start here if you're new to this project:** read this file top to bottom
+for the history, then `SETUP-GUIDE.md` for how to actually use it, then
+`CODE-BLOCKS.md` if you're touching the code-block translation feature
+specifically.
 
 ---
 
@@ -30,6 +35,8 @@ Paste in **`scormcontent/index.html`**.
 | 5 | Team workflow too technical | Manual CSV → JS conversion, terminal | **Update Glossary.command** — double-click only |
 | 6 | Glossary broke again (v1.8.8) | `.js` loader mis-parsed CSV when source URL ended in `.js` | v1.8.8 parse fix |
 | 7 | User wants **CSV only**, not `.js` | xAPI blocks CSV fetch even when file is in folder | v1.8.9 — **Update Glossary embeds CSV inside `index.html`**; course reads `embedded-csv` |
+| 8 | Dropdown search broke when the panel was portaled to `<body>` (to escape Rise's overflow clipping) | Search filtered options in the wrong DOM location once portaled | v1.9.1 — fixed language search to work against the portaled panel |
+| 9 | Custom HTML/JavaScript code blocks were invisible to the translator — only Rise's own text and video captions were covered | Code blocks render in a sandboxed `<iframe>` with arbitrary markup the bar can't safely walk | v1.10.0 — **code blocks now translate.** Prototyped separately (`Rise_Translate_Test_v1.0` repo), then merged into main. See `CODE-BLOCKS.md` for the full mechanism. |
 
 ---
 
@@ -86,7 +93,9 @@ course-package/
 
 | File | Purpose |
 |------|---------|
-| `risecoursetranslate.js` | Main translator — loaded from CDN |
+| `risecoursetranslate.js` | Main translator (course-level bar) — loaded from CDN |
+| `translate-core.js` | Translator for individual code blocks — loaded from CDN, one line per block (v1.10.0+) |
+| `code-block.html` | Worked example of a code block wired up with `translate-core.js` |
 | `Update Glossary.command` | Double-click to sync glossary into course |
 | `scripts/update-glossary.py` | Reads CSV/Excel, copies CSV, embeds in `index.html` |
 | `scripts/verify-glossary.mjs` | Dev check — CSV parses correctly |
@@ -94,6 +103,7 @@ course-package/
 | `glossary-course-folder.example.txt` | Template for course path config |
 | `test.html` | Local mock Rise page |
 | `SETUP-GUIDE.md` | Setup instructions |
+| `CODE-BLOCKS.md` | How the code-block translation feature works, and how to add it to a block |
 | `CHAT-SUMMARY.md` | This file |
 
 ### On your Mac (private — not on GitHub)
@@ -129,11 +139,14 @@ Open course → **F12** → **Console**:
 
 | Check | Expected |
 |-------|----------|
-| `window.__riseTranslateVersion` | `"1.8.9"` |
+| `window.__riseTranslateVersion` | `"1.10.0"` |
 | `window.__riseGlossaryCount` | `49` (or your term count) |
 | Console message | `Glossary loaded: X protected term(s) from embedded-csv` |
 
 Pick French/Spanish — terms like **ODF**, **TM Forum** should stay in English.
+
+To verify code-block translation specifically, see the checklist in
+`CODE-BLOCKS.md`.
 
 ---
 
@@ -161,6 +174,8 @@ Digital Twin,Digital Twin,
 | v1.8.4–v1.8.7 | Fetch fallbacks, `.js` workaround (later removed) |
 | v1.8.8 | Fix silent glossary parse failure |
 | v1.8.9 | **CSV only** — embed via Update Glossary, no `.js` |
+| v1.9.1 | Fix language search when the dropdown panel is portaled to `<body>` |
+| v1.10.0 | **Code blocks now translate.** Adds `translate-core.js` (loaded per code block) and the broadcast/skip logic in `risecoursetranslate.js` that lets the two talk over `postMessage`. Merged in from the `Rise_Translate_Test_v1.0` prototype repo. Full mechanism in `CODE-BLOCKS.md`. |
 
 ---
 
@@ -170,7 +185,9 @@ Digital Twin,Digital Twin,
 2. **Local testing** via double-clicking `index.html` (`file://`) — CSV fetch will fail; embedded glossary should still work after Update Glossary
 3. **jsDelivr `@main` cache** — can take a few minutes to serve latest code after git push; hard-refresh browser
 4. **Glossary terms split across Rise spans** — long phrases may partially translate if Rise splits text oddly in DOM
+5. **Code-block glossary is separate** — `translate-core.js` has its own hardcoded `KEEP` list, not connected to the course glossary CSV. See "Open question" in `CODE-BLOCKS.md` if these need to be unified.
+6. **DeepL engine is a stub** in both `translate-core.js` and any future DeepL work on the course bar — needs a server-side proxy before real use, so the API key never ships to the browser.
 
 ---
 
-*Summary of chat through v1.8.9 — ODF Awareness / Translation Glossary course.*
+*Summary of chat through v1.10.0 — ODF Awareness / Translation Glossary course, plus the code-block translation merge.*

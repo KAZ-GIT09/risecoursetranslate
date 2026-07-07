@@ -2,14 +2,18 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in (one line in index.html + copy Translation Glossary.csv into course folder):
  * <script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
- * v1.9.1 — fix language search when dropdown is portaled to body
+ * v1.10.0 — code-block aware: broadcasts the active language to any Rise
+ *           code block running translate-core.js, and skips walking the
+ *           insides of those blocks so they are not double-translated.
+ *           (Merged from Rise_Translate_Test_v1.0 into main. See
+ *           CODE-BLOCKS.md for the full explanation.)
  */
 (function () {
   'use strict';
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.9.1';
+  window.__riseTranslateVersion = '1.10.0';
   var scriptElRef = document.currentScript;
   var GLOSSARY_FETCH_FILES = ['Translation Glossary.csv', 'glossary.csv'];
 
@@ -216,6 +220,12 @@
           translatePage(saved);
         }
         initObserver();
+        // Keep code blocks in sync as Rise mounts them on scroll and on
+        // lesson change. A block ignores a repeat of the language it
+        // already shows (see translate-core.js), so this stays cheap.
+        setInterval(function () {
+          broadcastLangToBlocks(activeTranslation || getSavedLang() || 'en');
+        }, 1500);
       });
       initPlacementObserver();
     });
@@ -355,6 +365,7 @@
       setTriggerLabel(null);
       resetBtn.style.display = 'none';
       list.querySelectorAll('.rt-option').forEach(function (o) { o.classList.remove('rt-selected'); });
+      broadcastLangToBlocks('en');
     });
 
     bar.appendChild(wrap);
@@ -614,7 +625,39 @@
     });
     if (bar._trigger && bar._panel) closePanel(bar._trigger, bar._panel);
     translatePage(code, bar._spinner, null, bar._reset);
+    broadcastLangToBlocks(code);
   }
+
+  /* ── SELF-MANAGED CODE BLOCKS ────────────────────────────────────── */
+  /* Rise code blocks that load translate-core.js manage their own
+     translation. This bar does not walk their insides (see the
+     data-tc-managed check in getTranslateRoots below); it only tells
+     them which language to show, over postMessage. Blocks that don't
+     use translate-core simply never listen, so nothing changes for
+     them — this section is purely additive. See CODE-BLOCKS.md. */
+  function broadcastLangToBlocks(code) {
+    var lang = code || 'en';
+    (function post(win) {
+      var frames;
+      try { frames = win.document.querySelectorAll('iframe'); } catch (e) { return; }
+      frames.forEach(function (f) {
+        try { if (f.contentWindow) f.contentWindow.postMessage({ type: 'rise-lang', lang: lang }, '*'); } catch (e) {}
+        try { if (f.contentWindow) post(f.contentWindow); } catch (e) {}
+      });
+    })(window);
+  }
+
+  /* A block announces itself when its own engine finishes loading
+     ('rise-ready'). Answer with whatever language is active right now,
+     so blocks that mount late (lazy-loaded, revealed on scroll) still
+     end up showing the right language instead of defaulting to English. */
+  window.addEventListener('message', function (ev) {
+    var d = ev.data || {};
+    if (d && d.type === 'rise-ready' && ev.source) {
+      var code = activeTranslation || getSavedLang() || 'en';
+      try { ev.source.postMessage({ type: 'rise-lang', lang: code }, '*'); } catch (e) {}
+    }
+  });
 
   /* ── GLOSSARY ────────────────────────────────────────────────────── */
   function getScriptEl() {
@@ -977,6 +1020,12 @@
     document.querySelectorAll('iframe').forEach(function (frame) {
       try {
         if (frame.contentDocument && frame.contentDocument.body) {
+          // Skip code blocks that translate themselves (translate-core.js
+          // marks its own document with data-tc-managed). They are driven
+          // by the rise-lang broadcast instead, so this bar must not also
+          // walk their insides — that would double-handle the same text.
+          var docEl = frame.contentDocument.documentElement;
+          if (docEl && docEl.getAttribute('data-tc-managed')) return;
           roots.push(frame.contentDocument.body);
         }
       } catch (e) {}
