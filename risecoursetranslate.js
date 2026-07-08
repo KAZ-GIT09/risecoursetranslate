@@ -3,6 +3,7 @@
  * Drop-in (one line in index.html + copy Translation Glossary.csv into course folder):
  * <script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
  * CDN-bypass (always latest, no cache): <script src="https://raw.githubusercontent.com/Moyour/risecoursetranslate/main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
+ * v1.10.10 — skip video player elements (SKIP_ANCESTORS) and unambiguous media-UI text
  * v1.10.6 — translate each text individually (no separator Google can corrupt per-language)
  * v1.10.5 — glossary: word-boundary matching so short terms like "IT" don't match inside words
  * v1.10.4 — glossary: fix double-encoding in CSV fetch (spaces in filename caused 404)
@@ -21,7 +22,7 @@
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.10.6';
+  window.__riseTranslateVersion = '1.10.10';
   var scriptElRef = document.currentScript;
   var GLOSSARY_FETCH_FILES = ['Translation Glossary.csv', 'glossary.csv', 'Translation Glossary.js'];
 
@@ -94,6 +95,26 @@
   var placeBarPending   = false;
   var panelWrapRef      = null;
   var BLOCK_SEL         = 'h1,h2,h3,h4,h5,h6,p,li,td,th,blockquote,figcaption,dt,dd,button,a,label,span,[class*="blocks-"]';
+  // Ancestor elements whose subtree should never be translated (video/media players).
+  var SKIP_ANCESTORS    = [
+    'video','audio',
+    '[class*="player"]','[class*="Player"]',
+    '[class*="video-"]','[class*="Video"]',
+    '[class*="media-control"]','[class*="MediaControl"]',
+    '[class*="vjs-"]',        // Video.js
+    '[class*="plyr"]',        // Plyr
+    '[class*="mejs"]',        // MediaElement.js
+    '[class*="wistia"]',      // Wistia
+    '[class*="jw-"]',         // JW Player
+    '[class*="brightcove"]',  // Brightcove
+    '[class*="kaltura"]',     // Kaltura
+    '[class*="flowplayer"]',  // Flowplayer
+    '[class*="vimeo"]',       // Vimeo embed shell
+    '[class*="caption-window"]','[class*="captions-"]',
+    '[class*="playback-speed"]','[class*="speed-control"]',
+    '[role="timer"]',
+    '[data-notranslate]'
+  ].join(',');
   var glossary          = { keep: [], overrides: {} };
 
   /* ── STYLES ─────────────────────────────────────────────────────── */
@@ -1081,6 +1102,31 @@
     return roots;
   }
 
+  // Detect text that is unambiguously video/media player UI.
+  // Each rule requires TWO independent signals so ordinary course content
+  // that happens to contain a number or the word "captions" is never skipped.
+  var PURE_TIMESTAMP_RE = /^\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:\/\s*\d{1,2}:\d{2}(?::\d{2})?)?\s*$/;
+  var PURE_SPEED_RE     = /^\s*[\d.]+x\s*$/;
+  function looksLikeMediaUI(text) {
+    // Pure timestamp — "00:00" or "00:00 / 01:33"
+    if (PURE_TIMESTAMP_RE.test(text)) return true;
+    // Pure single speed value — "1x", "1.5x"
+    if (PURE_SPEED_RE.test(text)) return true;
+    // Two or more speeds glued together at the very start — "1x2x1.75x…"
+    if (/^\s*(?:[\d.]+x){2,}/.test(text)) return true;
+    // Timestamp AND speed values in the same string → video controls region
+    // e.g. "00:00 / 01:33Current time 00:00 Duration 01:331x2x1.75x…"
+    if (/\d{1,2}:\d{2}/.test(text) && /(?:[\d.]+x\s*){2,}/.test(text)) return true;
+    // Timestamp AND known video-control keyword → accessibility label block
+    if (/\d{1,2}:\d{2}/.test(text) &&
+        /\b(?:current[\s-]time|elapsed[\s-]time|duration|remaining[\s-]time)\b/i.test(text)) return true;
+    // Caption control label: must start with "Captions"/"Subtitles" and end with
+    // a short word or language tag — e.g. "Captions off", "Captions offSpanish (Spain)"
+    // Deliberately does NOT match a full sentence like "Captions are provided below."
+    if (/^\s*(?:captions?|subtitles?)\s+(?:off|on)(?:\s*\S{0,40})?\s*$/i.test(text)) return true;
+    return false;
+  }
+
   function getTranslateBlocks() {
     var blocks = [];
     var seen = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
@@ -1089,12 +1135,16 @@
         if (seen && seen.has(el)) return;
         if (el.closest && (el.closest('#' + BAR_ID) || el.closest('.rt-panel'))) return;
         if (el.closest && el.closest('script,style,noscript')) return;
+        // Skip elements inside known video/media player containers.
+        if (el.closest && el.closest(SKIP_ANCESTORS)) return;
         // Rise often splits one phrase across nested spans. Translate the
         // outermost matching block so glossary terms like "Digital Twin" stay
         // intact instead of being split across child elements.
         if (el.parentElement && el.parentElement.closest(BLOCK_SEL)) return;
         var text = el.textContent;
         if (!text || trimTerm(text).length < 2) return;
+        // Skip text that is clearly video player metadata.
+        if (looksLikeMediaUI(trimTerm(text))) return;
         if (seen) seen.add(el);
         blocks.push(el);
       });
