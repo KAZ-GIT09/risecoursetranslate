@@ -2,6 +2,7 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in (one line in index.html + copy Translation Glossary.csv into course folder):
  * <script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
+ * v1.10.8 — skip video/media player elements (timestamps, speeds, captions) during translation
  * v1.10.6 — translate each text individually (no separator Google can corrupt per-language)
  * v1.10.5 — glossary: word-boundary matching so short terms like "IT" don't match inside words
  * v1.10.4 — glossary: fix double-encoding in CSV fetch (spaces in filename caused 404)
@@ -20,7 +21,7 @@
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.10.6';
+  window.__riseTranslateVersion = '1.10.8';
   var scriptElRef = document.currentScript;
   var GLOSSARY_FETCH_FILES = ['Translation Glossary.csv', 'glossary.csv', 'Translation Glossary.js'];
 
@@ -92,7 +93,23 @@
   var barRef            = null;
   var placeBarPending   = false;
   var panelWrapRef      = null;
-  var BLOCK_SEL         = 'h1,h2,h3,h4,h5,h6,p,li,td,th,blockquote,figcaption,dt,dd,button,a,label,span,[class*="blocks-"]';
+  var BLOCK_SEL         = 'h1,h2,h3,h4,h5,h6,p,li,td,th,blockquote,figcaption,dt,dd,button,a,label,span';
+  var SKIP_ANCESTORS    = [
+    'video','audio',
+    '[class*="player"]','[class*="Player"]',
+    '[class*="video-"]','[class*="Video"]',
+    '[class*="media-control"]','[class*="MediaControl"]',
+    '[class*="vjs-"]',        // Video.js
+    '[class*="plyr"]',        // Plyr
+    '[class*="mejs"]',        // MediaElement.js
+    '[class*="wistia"]',      // Wistia
+    '[class*="jw-"]',         // JW Player
+    '[class*="brightcove"]',  // Brightcove
+    '[class*="kaltura"]',     // Kaltura
+    '[class*="flowplayer"]',  // Flowplayer
+    '[class*="caption-window"]','[class*="captions-"]',
+    '[data-notranslate]'
+  ].join(',');
   var glossary          = { keep: [], overrides: {} };
 
   /* ── STYLES ─────────────────────────────────────────────────────── */
@@ -1080,6 +1097,17 @@
     return roots;
   }
 
+  // Detect text that is clearly video/media UI rather than course content
+  var TIMESTAMP_RE = /^\s*\d{1,2}:\d{2}(?::\d{2})?\s*(?:\/\s*\d{1,2}:\d{2}(?::\d{2})?)?\s*$/;
+  var SPEED_RE     = /^\s*[\d.]+x\s*$/;
+  function looksLikeMediaUI(text) {
+    if (TIMESTAMP_RE.test(text)) return true;       // "00:00 / 01:33"
+    if (SPEED_RE.test(text)) return true;            // "1x", "1.5x", "2x"
+    // Concatenated playback speeds (player DOM collapsed into one string)
+    if (/^\s*(?:[\d.]+x){2,}/.test(text)) return true; // "1x2x1.75x1.5x…"
+    return false;
+  }
+
   function getTranslateBlocks() {
     var blocks = [];
     var seen = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
@@ -1088,12 +1116,16 @@
         if (seen && seen.has(el)) return;
         if (el.closest && (el.closest('#' + BAR_ID) || el.closest('.rt-panel'))) return;
         if (el.closest && el.closest('script,style,noscript')) return;
+        // Skip elements inside video/media players
+        if (el.closest && el.closest(SKIP_ANCESTORS)) return;
         // Rise often splits one phrase across nested spans. Translate the
         // outermost matching block so glossary terms like "Digital Twin" stay
         // intact instead of being split across child elements.
         if (el.parentElement && el.parentElement.closest(BLOCK_SEL)) return;
         var text = el.textContent;
         if (!text || trimTerm(text).length < 2) return;
+        // Skip text that looks like video player metadata
+        if (looksLikeMediaUI(trimTerm(text))) return;
         if (seen) seen.add(el);
         blocks.push(el);
       });
