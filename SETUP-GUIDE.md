@@ -11,7 +11,7 @@ Summary of the risecoursetranslate project and how to use it in Articulate Rise 
 - Keeps glossary terms **untranslated** in every language (brand names, acronyms, etc.)
 - **New in v1.10.0:** translates custom HTML/JavaScript code blocks too, not just Rise's own text and video captions — see the **Code blocks** section below and `CODE-BLOCKS.md`
 
-**GitHub repo:** https://github.com/Moyour/risecoursetranslate
+**GitHub repo:** https://github.com/KS-TMF/risecoursetranslate
 
 ---
 
@@ -20,7 +20,7 @@ Summary of the risecoursetranslate project and how to use it in Articulate Rise 
 Paste once in **`scormcontent/index.html`**. **Your team does not update this.**
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/KS-TMF/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
 ```
 
 `@main` always uses the latest version on GitHub — no new link when we push fixes.
@@ -28,7 +28,7 @@ Paste once in **`scormcontent/index.html`**. **Your team does not update this.**
 **Direct GitHub (bypass CDN cache)** — use this if jsDelivr is serving a stale version:
 
 ```html
-<script src="https://raw.githubusercontent.com/Moyour/risecoursetranslate/main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
+<script src="https://raw.githubusercontent.com/KS-TMF/risecoursetranslate/main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
 ```
 
 > Switch back to the jsDelivr URL above once the CDN has caught up — it's faster for end users.
@@ -36,7 +36,7 @@ Paste once in **`scormcontent/index.html`**. **Your team does not update this.**
 **Optional frozen version** (only change if you choose to upgrade later):
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@v1.8.7/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/KS-TMF/risecoursetranslate@v1.8.7/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
 ```
 
 ---
@@ -71,7 +71,7 @@ That copies the CSV into your course and syncs it into `index.html`. **No .js fi
 ### Step 1 — One line in `index.html`
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/KS-TMF/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
 ```
 
 ### Step 2 — Run Update Glossary
@@ -154,7 +154,7 @@ or form built with custom code — not standard Rise blocks), that content is
 that specific code block, near the bottom of its HTML:
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/translate-core.js" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/KS-TMF/risecoursetranslate@main/translate-core.js" defer></script>
 ```
 
 That's it — the block then follows the course's language dropdown

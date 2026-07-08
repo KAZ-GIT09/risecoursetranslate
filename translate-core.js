@@ -3,7 +3,7 @@
    ---------------------------------------------------------------------
    v1.0 — merged into the risecoursetranslate repo (was tested standalone
    in Rise_Translate_Test_v1.0). Load from:
-     https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/translate-core.js
+     https://cdn.jsdelivr.net/gh/KS-TMF/risecoursetranslate@main/translate-core.js
    Works alongside risecoursetranslate.js v1.10.0+, which broadcasts the
    selected language to any code block loading this file, and skips
    translating this block's insides itself. See CODE-BLOCKS.md.
