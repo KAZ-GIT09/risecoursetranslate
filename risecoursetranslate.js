@@ -2,7 +2,7 @@
  * risecoursetranslate.js — Rise & Storyline Course Translator
  * Drop-in (one line in index.html + copy Translation Glossary.csv into course folder):
  * <script src="https://cdn.jsdelivr.net/gh/Moyour/risecoursetranslate@main/risecoursetranslate.js" data-glossary="Translation Glossary.csv" defer></script>
- * v1.10.8 — skip video/media player elements (timestamps, speeds, captions) during translation
+ * v1.10.9 — broader media-UI detection: leading timestamps, 3+ speed values, caption labels
  * v1.10.6 — translate each text individually (no separator Google can corrupt per-language)
  * v1.10.5 — glossary: word-boundary matching so short terms like "IT" don't match inside words
  * v1.10.4 — glossary: fix double-encoding in CSV fetch (spaces in filename caused 404)
@@ -21,7 +21,7 @@
 
   if (window.__riseTranslateLoaded) return;
   window.__riseTranslateLoaded = true;
-  window.__riseTranslateVersion = '1.10.8';
+  window.__riseTranslateVersion = '1.10.9';
   var scriptElRef = document.currentScript;
   var GLOSSARY_FETCH_FILES = ['Translation Glossary.csv', 'glossary.csv', 'Translation Glossary.js'];
 
@@ -108,6 +108,10 @@
     '[class*="kaltura"]',     // Kaltura
     '[class*="flowplayer"]',  // Flowplayer
     '[class*="caption-window"]','[class*="captions-"]',
+    '[class*="vimeo"]',           // Vimeo embed shell
+    '[class*="playback-speed"]',  // Rise / generic speed picker
+    '[class*="speed-control"]',
+    '[role="timer"]',             // ARIA timer (e.g. current-time display)
     '[data-notranslate]'
   ].join(',');
   var glossary          = { keep: [], overrides: {} };
@@ -1105,6 +1109,15 @@
     if (SPEED_RE.test(text)) return true;            // "1x", "1.5x", "2x"
     // Concatenated playback speeds (player DOM collapsed into one string)
     if (/^\s*(?:[\d.]+x){2,}/.test(text)) return true; // "1x2x1.75x1.5x…"
+    // Text that begins with a timestamp — video control accessibility region,
+    // e.g. "00:00 / 01:33Current time 00:00 Duration 01:33…"
+    if (/^\s*\d{1,2}:\d{2}/.test(text)) return true;
+    // Three or more speed values anywhere in the text — speed picker menu,
+    // e.g. "2x1.75x1.5x1.25x1x(Normal)0.75x0.5x"
+    if (/(?:[\d.]+x\s*){3,}/.test(text)) return true;
+    // Caption / subtitle control label, e.g. "Captions off",
+    // "Captions offSpanish (Spain)", "Subtitles: English"
+    if (/^\s*(?:captions?|subtitles?)\s*/i.test(text) && text.trim().length < 120) return true;
     return false;
   }
 
