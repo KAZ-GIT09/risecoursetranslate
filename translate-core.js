@@ -417,17 +417,12 @@
     var sel = document.getElementById("tc-lang");
     if (sel && sel.value !== currentLang) sel.value = currentLang;
     if (currentLang === lastApplied) return;   // already showing this language
-    if (currentLang === "en") {
-      lastApplied = currentLang;
-      resetAll();
-      return;
-    }
     var pending = currentLang;
+    lastApplied = currentLang;   // mark immediately, so repeated re-delivery (storage + broadcast) does not relaunch translation while one is running
+    if (currentLang === "en") { resetAll(); return; }
     applyLanguage(currentLang).catch(function (e) {
-      lastApplied = null;   // allow a retry after a failure
+      if (pending === currentLang) lastApplied = null;   // allow a retry after a failure
       setStatus("error: " + e.message + " (endpoint blocked or rate limited)");
-    }).then(function () {
-      if (pending === currentLang) lastApplied = currentLang;
     });
   }
 
